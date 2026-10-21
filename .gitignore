@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+# data, build outputs, secrets: never commit
+/data/
+dist/
+runs/
+payload/
+logs/
+*.zip
+submission_config.json
+.env
+*.parquet
+uv.lock

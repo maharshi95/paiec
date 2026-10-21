@@ -1,0 +1,5 @@
+model: empirical_mean
+data_root: data/raw
+benchmarks: [multi_swebench, real_webagents, researchcodebench, swe_rebench]  # binary only
+cv: leave_one_benchmark_out
+seeds: [0, 1, 2]

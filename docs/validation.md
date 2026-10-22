@@ -14,7 +14,7 @@ Config keys:
 For each fold:
 1. `train = universe (or train_benchmarks) − fold`, and `predictor.fit(train)` runs once per fold.
 2. For each seed in `cv.seeds`, the fold's benchmarks are replayed with the hosted protocol (`sim/replay.py`):
-   - every (subject, benchmark) pair with ≥ `cv.min_items` (80) distinct items;
+   - every (subject, benchmark) pair with ≥ `cv.min_items` (80) **distinct source items** (`item_id`). Interactor variants of one item count once, stay in the same pool, and give one acquisition candidate. `cv.max_subjects_per_benchmark` samples only among eligible subjects. Selection (`benchmark_report.py`, `ref6_overlap.py`) uses the same ≥80-item rule;
    - a 50/50 acquisition/evaluation split fixed by `cv.split_seed`;
    - candidate order and revealed trials set by `seed`.
 

@@ -36,6 +36,16 @@ Use `pairs.csv` for paired comparisons. Runs with the same `cv.split_seed` and `
 | `predictor.*` | `name` plus any class attribute of that predictor |
 | `acquisition.*` | `name` plus any class attribute of that policy |
 
+## Main knobs worth sweeping
+| Key | Values | Effect |
+|---|---|---|
+| `predictor.item_target` | `centered` / `absolute` | whether item text may predict the benchmark offset (cold start) |
+| `predictor.balance_benchmarks` | bool | equal benchmark weight in the item ridge |
+| `predictor.beta_var_mult` | ≥1 | widens the benchmark-offset prior (hedges B0, learns the offset faster from evidence) |
+| `predictor.var_scale` | ~1 | scales all prior variances |
+| `predictor.item_fields` / `subject_fields` | lists | field ablations |
+| `acquisition.name` | `uncertainty` (radius), `information` (gamma), `quantile` (slack), `accept_all`, `official_random` | streaming selection. `quantile` uses the bound predictor plus global evidence |
+
 ## Extending
 - **New predictor.** Subclass `paiec.predictors.base.Predictor`:
   - Implement `fit(train)`, `score(state, subject, item)` and, for speed, `score_batch`.
@@ -44,7 +54,7 @@ Use `pairs.csv` for paired comparisons. Runs with the same `cv.split_seed` and `
   - Register it in `predictors/__init__.py`.
   - Runtime methods may use only numpy + stdlib. State must serialise via `paiec.runtime` (numpy arrays, dicts, tuples, paiec objects).
   - `tests/test_harness.py` automatically checks batch = single, incremental = fresh, and the serialisation round trip for every registered predictor.
-- **New acquisition policy.** Subclass `acquisition.Policy` and implement `decide(input, p, context, rate)`. The base class enforces the fill rule. Register it in `POLICIES`.
+- **New acquisition policy.** Subclass `acquisition.Policy` and implement `decide(input, p, context, rate, labeled)`. `self._predictor` is available when bound: the replay binds it, and so does the submission's `labeling.py`. The base class enforces the fill rule. Register it in `POLICIES`.
 - **New feature or field.** Add a named extractor to `features/item.py` or `features/subject.py` and list it in `ALL_FIELDS`. It can then be ablated with `--set predictor.item_fields=[text,kv]`.
 
 ## Things the harness does to keep results honest

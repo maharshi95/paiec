@@ -9,9 +9,9 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from paiec.runtime import load_policy
+from paiec.runtime import load_policy, load_predictor
 
-_POLICY = load_policy(_ROOT)
+_POLICY = load_policy(_ROOT).bind(load_predictor(_ROOT))
 
 
 def acquisition_function(input, prediction, labeled, context):

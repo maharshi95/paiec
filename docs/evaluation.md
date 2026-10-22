@@ -24,7 +24,7 @@ Diagnostic (not ranking): ECE, 10 equal-width bins, count-weighted.
 - `context.labels_remaining` = 31 − acquired, regardless of the next checkpoint. `items_remaining` includes the current candidate.
 - The default policy (no `labeling.py`) is hash-uniform `u < labels_remaining / items_remaining`, i.e. selection sampling.
 - Checkpoints are nested. Every pair is advanced to budget n, then every evaluation input is scored. Workers restart at each checkpoint, so `predict` must rebuild from `labeled`.
-- `labeled` is presumably **global**, containing every pair's revealed labels, which lets the model learn the unseen benchmark's offset and item difficulties at test time. The harness supports both scopes (`sim.evidence_scope`).
+- `labeled` is **global** (confirmed 2026-10-22 from the organizers' shipped client; see docs/submission-format.md §2). It contains every pair's revealed labels, so the model can learn the unseen benchmark's offset and item difficulties at test time. The harness still supports `sim.evidence_scope: pair` for ablation.
 - Each repeated trial is a separate scored target, and identical visible inputs get one prediction.
 
 ## Caveats for local simulation

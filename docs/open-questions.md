@@ -9,3 +9,5 @@
 7. Dataset id typo: user-provided `aims-foundation/measurement-db` does not exist; correct is `aims-foundations/measurement-db`.
 8. Conflicting deadline text (20 Nov vs 30 Oct) — organizers' page says 30 Oct AoE.
 9. Allowed pip packages in the hosted env (requirements.txt gated); stay stdlib/numpy-light or ship pure-python/numpy weights.
+
+10. ~~Is `labeled` global?~~ **Yes.** Resolved 2026-10-22 from paiec_baseline `tools/streaming_ingestion.py`; see docs/submission-format.md §2.

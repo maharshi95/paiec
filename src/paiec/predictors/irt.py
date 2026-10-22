@@ -21,11 +21,12 @@ from .base import Evidence, Predictor, item_key
 from .simple import sigmoid
 
 
-def ridge(X, y, lam):
+def ridge(X, y, lam, weights=None):
     X = np.asarray(X, float)
-    xm, ym = X.mean(0), y.mean()
+    sw = np.ones(len(y)) if weights is None else np.asarray(weights, float) / np.mean(weights)
+    xm, ym = (sw @ X) / sw.sum(), float(sw @ y / sw.sum())
     Xc = X - xm
-    w = np.linalg.solve(Xc.T @ Xc + lam * np.eye(X.shape[1]), Xc.T @ (y - ym))
+    w = np.linalg.solve(Xc.T @ (Xc * sw[:, None]) + lam * np.eye(X.shape[1]), Xc.T @ (sw * (y - ym)))
     return w, float(ym - xm @ w)
 
 
@@ -60,6 +61,12 @@ class IRT(Predictor):
     fit_prior_var = 9.0
     var_floor = 0.05
     var_scale = 1.0          # multiplies all prior variances (calibration knob)
+    beta_var_mult = 1.0      # multiplies only the benchmark-offset prior variance (cold-start hedge)
+    # "centered": items predict within-benchmark difficulty; offset prior = mean of training offsets.
+    # "absolute": items predict difficulty *including* the benchmark offset (text can carry "this kind
+    #   of benchmark is easy"); offset prior N(0, cross-benchmark error of that prediction).
+    item_target = "centered"
+    balance_benchmarks = False   # weight items 1/n_items(benchmark) in the item ridge
 
     # ---------------- fit ----------------
     def fit(self, train):
@@ -80,15 +87,26 @@ class IRT(Predictor):
             d[item_b == b] -= c
             theta[pair_b == b] -= c
 
-        # item difficulty prior
-        X = self.ifeat.transform([train.items[i] for i in items_used])
-        self.w_i, self.b_i, self.var_d = self._fit_prior(X, d, item_b, self.ridge_item, self.use_item_features)
-
         # benchmark offset prior
         benches = np.unique(pair_b)
         beta = np.array([theta[pair_b == b].mean() for b in benches])
         self.mu_beta = float(beta.mean())
         self.var_beta = max(float(beta.var()) if len(beta) > 1 else 1.0, 0.25)
+
+        # item difficulty prior
+        X = self.ifeat.transform([train.items[i] for i in items_used])
+        wts = None
+        if self.balance_benchmarks:
+            cnt = np.bincount(item_b)
+            wts = 1.0 / cnt[item_b]
+        if self.item_target == "absolute":
+            target = d - beta[np.searchsorted(benches, item_b)]   # logit(avg subject) = -target
+            self.w_i, self.b_i, self.var_d, var_off = self._fit_prior(X, target, item_b, self.ridge_item,
+                                                                       self.use_item_features, wts, split_offset=True)
+            self.mu_beta, self.var_beta = 0.0, max(var_off, self.var_floor)
+        else:
+            self.w_i, self.b_i, self.var_d = self._fit_prior(X, d, item_b, self.ridge_item, self.use_item_features, wts)
+        self.var_beta *= self.beta_var_mult
 
         # subject residual prior: features + history
         r = theta - beta[np.searchsorted(benches, pair_b)]
@@ -106,18 +124,29 @@ class IRT(Predictor):
             self.var_u = max(float(np.mean((r - np.array([full(Z[k], ident[k]) for k in range(len(r))])) ** 2)) * 1.5, self.var_floor)
         return self
 
-    def _fit_prior(self, X, y, groups, lam, enabled):
+    def _fit_prior(self, X, y, groups, lam, enabled, weights=None, split_offset=False):
+        """Ridge prior + cross-group (leave-one-benchmark-out) residual variance.
+
+        split_offset: also return the variance of the per-benchmark *mean* residual (how wrong the
+        predicted benchmark offset is) and report the item variance net of it.
+        """
+        wsub = (lambda m: None) if weights is None else (lambda m: weights[m])
         if not enabled:
-            return np.zeros(X.shape[1]), 0.0, max(float(np.mean(y ** 2)), self.var_floor)
-        res = []
-        for g in np.unique(groups):
-            if len(np.unique(groups)) < 2:
-                break
-            w, b = ridge(X[groups != g], y[groups != g], lam)
-            res.append(y[groups == g] - (X[groups == g] @ w + b))
-        w, b = ridge(X, y, lam)
+            w, b = np.zeros(X.shape[1]), float(np.mean(y))
+        res, offs = [], []
+        for g in np.unique(groups) if len(np.unique(groups)) > 1 else []:
+            m = groups != g
+            wg, bg = ridge(X[m], y[m], lam, wsub(m)) if enabled else (w, float(np.mean(y[m])))
+            r = y[~m] - (X[~m] @ wg + bg)
+            offs.append(r.mean())
+            res.append(r - r.mean() if split_offset else r)
+        if enabled:
+            w, b = ridge(X, y, lam, weights)
         var = np.mean(np.concatenate(res) ** 2) if res else np.mean((y - X @ w - b) ** 2) * 1.5
-        return w, b, max(float(var), self.var_floor)
+        out = (w, b, max(float(var), self.var_floor))
+        if split_offset:
+            out += (float(np.mean(np.square(offs))) if offs else 1.0,)
+        return out
 
     def _fit_subject(self, Z, r, ident, keep=False):
         w, b = ridge(Z, r, self.ridge_subject) if self.use_subject_features else (np.zeros(Z.shape[1]), float(r.mean()))

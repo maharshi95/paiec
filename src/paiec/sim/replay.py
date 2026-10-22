@@ -80,6 +80,8 @@ def _ece(probs, ys_list, bins=10):
 def replay(predictor, policy, ds, pairs, evidence_scope="global", fresh_each_checkpoint=True, per_call_eval=False):
     """per_call_eval: score with one predict() per input (hosted call pattern) instead of predict_batch."""
     evidence = []
+    if hasattr(policy, "bind"):
+        policy.bind(predictor)
     t = {"acq_calls": 0, "acq_s": 0.0, "eval_inputs": 0, "eval_s": 0.0}
     for n in BUDGETS:
         for pr in pairs:

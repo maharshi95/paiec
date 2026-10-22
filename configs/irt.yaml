@@ -1,4 +1,4 @@
 name: irt
 base: configs/base.yaml
 predictor: {name: irt}
-acquisition: {name: accept_all}
+acquisition: {name: uncertainty, radius: 0.15}   # best simple policy (docs/results.md)

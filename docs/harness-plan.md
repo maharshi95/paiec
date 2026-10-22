@@ -86,6 +86,11 @@ submission_template/model.py, labeling.py  -- thin shims that load state.pkl + t
   - Precompute training-side artifacts.
   - Featurize each unique item once per process.
 
+### Findings so far (docs/results.md)
+- Under global evidence, uncertainty sampling (r = 0.15) beats accept_all by 0.004 ALC (paired, all folds). The information rule is similar. It is the IRT default now.
+- Global versus pair evidence is worth 0.03 ALC, far more than any acquisition rule. Verify the hosted behaviour first.
+- Next on acquisition: tune r per budget phase; use expected reduction in evaluation-pool Brier (needs item-prior variance); and, under global evidence, favour items that other subjects have labeled or will be scored on.
+
 ## 5. Order of work
 1. Dataset + features + sim/replay + metrics + experiment runner + leaderboard. Tests: replay invariants, `predict_batch` = `predict`, acquisition fill rule.
 2. Baselines → beta_shrink → irt. Acquisition sweep on the best predictor.

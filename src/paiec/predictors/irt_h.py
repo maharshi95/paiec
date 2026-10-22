@@ -36,12 +36,13 @@ class IRTH(IRT):
     #   kappa = sqrt(1 + pi v / 8), v = summed current posterior variances of the observation's terms.
     #   The joint MAP attenuates the offset/abilities when items carry large, weakly identified variances.
     vi = False
+    vi_frac = 1.0   # scales the variance inside the VI expectation (0 = MAP, 1 = mean-field VI)
     # runtime multipliers of the individual prior variances (on top of var_scale), for adapt and score
     b_mult = 1.0
     u_mult = 1.0
     d_mult = 1.0
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("nu_u", "nu_d", "tau_u", "tau_d", "em_start", "min_var_mult",
-                                           "max_var_mult", "score_var_mult", "vi", "b_mult", "u_mult", "d_mult")
+                                           "max_var_mult", "score_var_mult", "vi", "vi_frac", "b_mult", "u_mult", "d_mult")
 
     def _prior_vars(self):
         vs = self.var_scale
@@ -114,7 +115,7 @@ class IRTH(IRT):
             if not self.vi:
                 mu = sigmoid(eta)
                 return mu, mu * (1 - mu)
-            kap = np.sqrt(1 + np.pi * ((vb if self.learn_bench else 0.0) + vdel[P] + vd[J]) / 8)
+            kap = np.sqrt(1 + np.pi * self.vi_frac * ((vb if self.learn_bench else 0.0) + vdel[P] + vd[J]) / 8)
             mu = sigmoid(eta / kap)
             return mu, mu * (1 - mu) / kap
 

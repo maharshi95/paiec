@@ -176,3 +176,9 @@ def test_subject_sharing_uses_other_benchmarks(ds):
         p = build_predictor({"name": "irt", "subject_sharing": share}).fit(ds.restrict(["bench0"]))
         moved[share] = p.predict(target, other) - p.predict(target, [])
     assert abs(moved[False]) < 1e-9 and moved[True] > 0.01
+
+
+def test_build_predictor_switch_drops_foreign_params():
+    assert build_predictor({"name": "constant", "item_target": "absolute"}).name == "constant"
+    with pytest.raises(ValueError):
+        build_predictor({"name": "constant", "item_targett": "absolute"})

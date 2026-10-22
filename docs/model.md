@@ -46,15 +46,36 @@ For subject s and item i on (anonymous) benchmark b:
 ### Acquisition (`src/paiec/acquisition`)
 Default is `uncertainty(radius=0.15)`: accept a candidate iff |p − 0.5| ≤ 0.15, with the fill rule (accept everything once `items_remaining ≤ labels_remaining`). The alternatives (`information`, `quantile`, `accept_all`, `official_random`) are compared in `results.md`.
 
+## Variant: cross-benchmark subject sharing (`subject_sharing: true`)
+
+    logit P = β_b + g_s + δ_{s,b} − d_i
+
+- **g_s** is a *global* subject ability keyed by model identity (`subject_identity`: normalised name or source model name). Its prior N(u(s), σ²_g) uses the same features + history blend.
+- **δ_{s,b}** is a benchmark-specific residual, δ ~ N(0, σ²_pair).
+- **Variance split.** Training estimates σ²_pair as the within-identity variance of pair abilities across benchmarks, and σ²_g = σ²_u − σ²_pair. Prior predictions at budget 0 therefore match the per-benchmark model.
+- **Adaptation is joint over all benchmarks** (`_fit_joint`), so a subject's labels on *other* test benchmarks inform its prediction here. `labeled` is global, so this information is available on the platform.
+- **Motivation:** subjects are the same dicts across benchmarks, while benchmark-specific δ_{s,b} only learns from that pair's ≤31 labels. Expected to matter most for new models with no training history.
+
+## Variant: multidimensional IRT (`name: mirt`, `ndim: K`; `src/paiec/predictors/mirt.py`)
+
+    logit P = β_b + g_s + δ_{s,b} − d_i + θ_s · (a_i − ā),   a_i = Vᵀ x_i
+
+- **Item loadings a_i ∈ R^K come from content.** They use the same features x_i as the difficulty prior, through a learned map V (F × K). Unseen items get loadings from their text, CAIMIRA-style.
+- **Skill profile θ_s ∈ R^K per model identity.** The prior is a ridge from subject features, blended with the identity's training profile.
+- **Fit.** Adam on the training responses with the Rasch main effects held fixed, on a seeded sample of ≤ `mirt_items` items, with L2 on V and θ. Initialise at O(1) scale (`init_scale`): the bilinear form has a saddle at 0, and an earlier small-init version collapsed to exactly zero.
+- **ā centres the loadings.** The interaction then has about zero mean per subject, and the IRT main effects and priors keep their meaning.
+- **Adapt.** K×K Newton steps on θ inside the Newton loop. With `subject_sharing`, θ is shared across test benchmarks, the intended setting; otherwise it is per pair.
+- **Sweep:** K ∈ {2, 4, 8, 16} (results in `results.md`).
+
 ## Known limitations
 - **The benchmark offset is unknown at budget 0.** That gap is 0.255 vs 0.204 B0 Brier with an oracle offset. Neither text nor an LLM predicts it (`item-difficulty-plan.md` §7).
 - **Item-text priors barely transfer across benchmarks.** LOBO Spearman of ŷ vs d is about 0.06. The BOW prior is still worth +0.0055 ALC end to end, mostly through within-benchmark structure and kv tokens.
-- **Unidimensional, so no skill profiles.** A subject that is strong at math but weak at agentic tasks gets one δ per benchmark, learned only from that benchmark's labels plus a single blended prior.
+- **The default (`irt`) is unidimensional, with per-benchmark subject terms.** The `mirt` and `subject_sharing` variants above address this; their status is in `results.md`.
 
 ## Roadmap (ordered by expected value; details in `item-difficulty-plan.md` §4–7)
 1. kv-group effects and duplicate tying inside each benchmark's adaptation. Labels then propagate to items in the same group or with identical content.
 2. Robustness guards: clip prior means, standardise dense item features within the benchmark pool.
 3. LLM difficulty column (z-scored within the benchmark) once the larger-model scores exist; per-benchmark item spread.
-4. Multidimensional subject model (e.g. 2–3 skill dimensions such as agentic/code vs reasoning/knowledge), with item loadings from content or LLM task type. CAIMIRA-style. This needs many training benchmarks, which the 278-benchmark pool now provides.
+4. Multidimensional subject model: implemented as `mirt`. Next steps are loadings from LLM task-type features, and per-item loading updates from test-time labels.
 5. A common discrimination per benchmark (a logit scale) for noisy-judge benchmarks.
 6. Training-set selection and weighting (`benchmark-selection.md`, `validation.md`).

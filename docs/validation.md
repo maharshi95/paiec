@@ -39,11 +39,18 @@ Outputs in `runs/<name>/metrics.json`:
 | cost | 5–10 min per run on 1 CPU | one Slurm CPU job per variant (8 CPUs, 60 GB) |
 | weakness | 5 test benchmarks: high variance, easy to overfit | hyperparameters tuned on the same folds they are reported on |
 
-## Recommendation: add a locked hold-out set (not implemented yet)
+## Locked hold-out set (implemented 2026-10-22: `configs/split/`, `scripts/make_selection.py`)
 Every number so far is reported on the folds used to choose settings: the radius, beta_var_mult, item_target and the training pool. With ~30 configurations compared, that is optimistically biased. The cure is a **dev / hold-out split of benchmarks**:
 - **dev** (≈ 45 panel benchmarks): grouped 5-fold CV as above. Use it for every comparison and sweep.
 - **hold-out** (≈ 12 panel benchmarks, about 2 per major domain): never used for tuning. It is evaluated only for milestone configs (e.g. before each Codabench submission and for the final report), training on everything except the hold-out. The report quotes this number.
 - Keep the six reference benchmarks in dev, since all history is on them.
 - The hold-out must also be excluded from the training pool whenever dev runs train. This mimics the hosted test, where test benchmarks were never released.
+
+**As built:**
+- **Hold-out:** 12 benchmarks, one from each of the 12 largest primary domains of the panel, chosen by seeded hash (`configs/split/holdout.txt`): tau2_bench, realtimeqa, brace, bigfinancebench, pxplore, risebench, helm_bbq, naturebench, editbench, helm_thaiexam, wildvision, afrimedqa.
+- **Dev:** the other 45 panel benchmarks, in 5 grouped folds of 9.
+- **Dev configs** (`configs/split/dev_*.yaml`): the universe *excludes* the hold-out benchmarks.
+- **Hold-out configs** (`holdout_*.yaml`): test on the hold-out as one fold, training on everything else.
+- **Use:** run every comparison on dev, and report hold-out only for milestone configs. Never select hyperparameters on it.
 
 Codabench formative feedback is the true external check, but each feedback run is a fresh ≤1,000-pair sample, so it is noisy.

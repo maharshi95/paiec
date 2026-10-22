@@ -32,11 +32,16 @@ def comps(pred, state, inputs):
         st = fits.get(i.get("benchmark_id", ""))
         bm, bv = st["beta"] if st else (pred.mu_beta, pred.var_beta * vs)
         dm, dv = st["delta"].get(subject_key(s), (None, None)) if st else (None, None)
+        h = st.get("hyp") if st else None
         if dm is None:
             dm, dv = pred.subject_prior(s), pred.var_u * vs
+            if h:
+                dm, dv = h["lam_u"] * dm, h["s2u"]
         im, iv = st["d"].get(item_key(i), (None, None)) if st else (None, None)
         if im is None:
             im, iv = yh[k], pred.var_d * vs
+            if h:
+                im, iv = h["cb"] + h["lam_d"] * (yh[k] - h["cb"]), h["s2d"]
         out[k] = bm, bv, dm, dv, im, iv
     return out
 

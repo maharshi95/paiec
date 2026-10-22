@@ -162,13 +162,22 @@ def cap_subjects(slug, subject_col, sub_tab, seen_ids, max_responses) -> np.ndar
     return subject_col.isin(keep_s).values
 
 
+def load_from_config(d: dict, **kw) -> Dataset:
+    """load_dataset from a config's `data` section."""
+    return load_dataset(d["root"], d.get("benchmarks"), d.get("binarize"), d.get("cache_dir", "data/processed"),
+                        max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"),
+                        prefer_seen_from=d.get("prefer_seen_from"), cap_overrides=d.get("cap_overrides"), **kw)
+
+
 def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="data/processed",
-                 use_cache=True, max_responses=None, max_item_chars=None, prefer_seen_from=None) -> Dataset:
+                 use_cache=True, max_responses=None, max_item_chars=None, prefer_seen_from=None,
+                 cap_overrides=None) -> Dataset:
     """root: a measurement-db-layout directory ({benchmark}/formatted_tables/*.parquet) or a list of
     them. max_responses: cap per benchmark by keeping a seeded random subset of *subjects* (each kept
     pair keeps all of its items). max_item_chars: truncate stored item text (memory; featurizers
     read at most a few thousand characters anyway). prefer_seen_from: benchmarks whose model identities
-    are kept first when capping (e.g. the six reference benchmarks), so capped benchmarks retain them."""
+    are kept first when capping (e.g. the six reference benchmarks), so capped benchmarks retain them.
+    cap_overrides: {benchmark: cap or None (uncapped)} replacing max_responses for those benchmarks."""
     import pandas as pd
 
     binarize = binarize or {"mode": "exclude"}
@@ -177,7 +186,10 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
     slugs = sorted(tables)
     if benchmarks:
         slugs = [s for s in slugs if s in benchmarks]
-    key = hashlib.sha1(json.dumps(["v3", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from], sort_keys=True).encode()).hexdigest()[:12]
+    key_parts = ["v3", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from]
+    if cap_overrides:   # appended only when set, so existing caches keep their keys
+        key_parts.append(cap_overrides)
+    key = hashlib.sha1(json.dumps(key_parts, sort_keys=True).encode()).hexdigest()[:12]
     cache = Path(cache_dir) / f"dataset_{key}.pkl"
     if use_cache and cache.exists():
         with open(cache, "rb") as f:
@@ -209,8 +221,9 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
                 subject_ids.append(row.subject_id)
         resp = resp[keep]
         y = y[keep]
-        if max_responses and len(resp) > max_responses:
-            m = cap_subjects(slug, resp.subject_id, pd.read_parquet(t / "subjects.parquet"), seen_ids, max_responses)
+        cap = (cap_overrides or {}).get(slug, max_responses)
+        if cap and len(resp) > cap:
+            m = cap_subjects(slug, resp.subject_id, pd.read_parquet(t / "subjects.parquet"), seen_ids, cap)
             resp, y = resp[m], y[m]
         # a visible item is (item, interactors): interactors live on responses and are part of the input
         inter = resp.interactors.fillna("").astype(str).values

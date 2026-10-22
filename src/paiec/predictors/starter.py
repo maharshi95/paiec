@@ -6,7 +6,8 @@
 k / n are the pair's revealed successes / labels. The benchmark log-odds start at the training base
 rate and move toward the pooled rate of every label revealed on this (unseen) benchmark so far.
 Copy this file, rename the class and `name`, register it in predictors/__init__.py, and point a config
-at it (configs/aims/starter.yaml). See docs/getting-started.md.
+at it (configs/aims/starter.yaml). See docs/getting-started.md. As written it is the `beta_shrink`
+baseline (identical scores), so an unmodified copy should reproduce that row of the README table.
 """
 import numpy as np
 

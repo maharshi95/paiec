@@ -66,7 +66,16 @@ Data licence: CC-BY-SA-4.0; individual benchmarks keep their own licences. Cite
 `configs/aims/*.yaml` (3 seeds; ≤20 subjects per benchmark, ≤100 eval items per pair, ref6-seen models).
 Lower is better.
 
-RESULTS_TABLE
+| model | config | ALC | B0 | B1 | B3 | B7 | B15 | B31 |
+|---|---|---|---|---|---|---|---|---|
+| constant 0.5 | `constant.yaml` | **0.2500** | 0.250 | 0.250 | 0.250 | 0.250 | 0.250 | 0.250 |
+| official baseline (pair mean, random acquisition) | `empirical_mean.yaml` | **0.2230** | 0.250 | 0.330 | 0.217 | 0.185 | 0.174 | 0.168 |
+| Beta shrinkage + subject history | `beta_shrink.yaml` | **0.1919** | 0.265 | 0.203 | 0.188 | 0.179 | 0.173 | 0.168 |
+| starter template (= beta_shrink, rewritten) | `starter.yaml` | **0.1919** | 0.265 | 0.203 | 0.188 | 0.179 | 0.173 | 0.168 |
+| **champion**: amortised IRT + uncertainty acquisition | `irt.yaml` | **0.1857** | 0.252 | 0.195 | 0.183 | 0.176 | 0.167 | 0.164 |
+| champion, trained on train + other val groups | `irt_cv.yaml` | **0.1830** | 0.240 | 0.194 | 0.182 | 0.174 | 0.166 | 0.156 |
+
+The headline `ALC` is the mean over the 5 val groups. The starter template reproduces `beta_shrink` exactly, which makes a useful check that a copied model is wired up correctly. `irt_cv` reproduces the research loop's `R_champion_dev` on the full measurement-db exactly (Δ = 0 on all 1,032 matched pairs).
 
 ## Make your own model
 

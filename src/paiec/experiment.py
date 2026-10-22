@@ -28,22 +28,30 @@ def _git_sha() -> str:
         return ""
 
 
-def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
-    if ds is None:
-        from .data.dataset import load_dataset
-        d = cfg["data"]
-        ds = load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"],
-                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"),
-                          prefer_seen_from=d.get("prefer_seen_from"))
-    benches = [b for b in (cfg["data"]["benchmarks"] or ds.benchmarks()) if b in ds.benchmarks()]
-    folds = cfg["cv"]["test_benchmarks"] or benches
-    cv, sim = cfg["cv"], cfg["sim"]
-    allowed = None
-    if cv.get("eval_seen_from"):   # evaluate only subjects whose model identity appears in these benchmarks
+def eval_subjects(ds, cv) -> set | None:
+    """Subject indices eligible for evaluation (None = all).
+    cv.eval_subjects: a file of private subject ids, one per line (fixes the eval population across data
+    variants; every run writes its own as runs/<name>/eval_subjects.txt). Else cv.eval_seen_from: subjects
+    whose model identity appears in these benchmarks."""
+    if cv.get("eval_subjects"):
+        ids = set(Path(cv["eval_subjects"]).read_text().split())
+        return {k for k, sid in enumerate(ds.subject_ids) if sid in ids}
+    if cv.get("eval_seen_from"):
         from .features.subject import subject_identity
         ref = np.isin(ds.resp_b, [ds.bench_names.index(b) for b in cv["eval_seen_from"] if b in ds.bench_names])
         seen = {subject_identity(ds.subjects[s]) for s in np.unique(ds.resp_s[ref])}
-        allowed = {k for k, s in enumerate(ds.subjects) if subject_identity(s) in seen}
+        return {k for k, s in enumerate(ds.subjects) if subject_identity(s) in seen}
+    return None
+
+
+def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
+    if ds is None:
+        from .data.dataset import load_from_config
+        ds = load_from_config(cfg["data"])
+    benches = [b for b in (cfg["data"]["benchmarks"] or ds.benchmarks()) if b in ds.benchmarks()]
+    folds = cfg["cv"]["test_benchmarks"] or benches
+    cv, sim = cfg["cv"], cfg["sim"]
+    allowed = eval_subjects(ds, cv)
     train_pool = cv.get("train_benchmarks")
     if isinstance(train_pool, str):   # a data directory: every benchmark downloaded there (e.g. data/aims/train)
         from .data.dataset import find_benchmarks
@@ -104,6 +112,8 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
         out.mkdir(parents=True, exist_ok=True)
         (out / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
         (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
+        if allowed is not None:
+            (out / "eval_subjects.txt").write_text("\n".join(sorted(ds.subject_ids[k] for k in allowed)) + "\n")
         with open(out / "pairs.csv", "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(rows[0]))
             w.writeheader()

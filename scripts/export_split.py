@@ -56,13 +56,14 @@ def export_benchmark(slug, src, dst, d, seen_ids):
         scale.update(min=pinned[0], max=pinned[1])
         cat = cat.assign(response_scale=json.dumps(scale))
     subjects = pd.read_parquet(src / "subjects.parquet")
-    resp = resp[cap_subjects(slug, resp.subject_id, subjects, seen_ids, d.get("max_responses"))]
+    cap = (d.get("cap_overrides") or {}).get(slug, d.get("max_responses"))
+    resp = resp[cap_subjects(slug, resp.subject_id, subjects, seen_ids, cap)]
     items = pd.read_parquet(src / "items.parquet")
     items = items[items.item_id.isin(set(resp.item_id))]
     dst.mkdir(parents=True, exist_ok=True)
     for name, df in (("benchmarks", cat), ("subjects", subjects), ("items", items), ("responses", resp)):
         df.to_parquet(dst / f"{name}.parquet", index=False, compression="zstd")
-    return {"benchmark": slug, "rule": rule, "subjects": int(resp.subject_id.nunique()),
+    return {"benchmark": slug, "rule": rule, "cap": cap, "subjects": int(resp.subject_id.nunique()),
             "items": int(resp.item_id.nunique()), "responses": len(resp),
             "pinned_bounds": pinned, "license": str(cat.iloc[0].get("license", "")), "domain": [str(x) for x in (cat.iloc[0].get("domain") if cat.iloc[0].get("domain") is not None else [])]}
 
@@ -175,7 +176,7 @@ def main():
                 print(f"  {name} {b}: dropped (withheld or nothing binarisable)", flush=True)
         kept = [r["benchmark"] for r in rows]
         meta = {"split": name, "upstream": UPSTREAM, "upstream_revision": revision, "source_config": a.config,
-                "paiec_commit": sha, "binarize": d["binarize"], "max_responses": d.get("max_responses"),
+                "paiec_commit": sha, "binarize": d["binarize"], "max_responses": d.get("max_responses"), "cap_overrides": d.get("cap_overrides"),
                 "prefer_seen_from": d.get("prefer_seen_from"), "benchmarks": kept,
                 "folds": [[b for b in f if b in kept] for f in folds] if name == "val" else None, "stats": rows}
         (root / "REVISION").write_text(revision + "\n")

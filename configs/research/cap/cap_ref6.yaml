@@ -1,0 +1,15 @@
+# Cap experiment (docs/results.md 2026-10-22): champion on the dev protocol with ref6 uncapped.
+# Val benchmarks keep the 100K cap and the eval population is fixed, so pairs match R_champion_dev.
+name: R_cap_ref6
+base: configs/research/champion.yaml
+data:
+  cache_dir: data/processed
+  cap_overrides:
+    matharena: null
+    mmdocrag: null
+    multi_swebench: null
+    real_webagents: null
+    researchcodebench: null
+    swe_rebench: null
+cv:
+  eval_subjects: configs/split_seen/eval_subjects.txt

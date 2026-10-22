@@ -1,0 +1,4 @@
+# item direction candidate: champion + online within-benchmark item amortisation (docs/research/item.md)
+name: item_online_dev
+base: configs/research/champion.yaml
+predictor: {name: irt_item, item_target: absolute, beta_var_mult: 4.0, rp_frac: 0.4, rp_dim: 32, kv_frac: 0.3, eb_nu: 10}

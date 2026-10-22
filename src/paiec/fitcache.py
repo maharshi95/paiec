@@ -10,6 +10,9 @@ Key = sha1 of
 Runtime methods (adapt, extend, score, _bench_step, ...) are *not* hashed: edits to them reuse the
 cached fit, which is the point. If a fit depends on code outside these (rare), set
 `cv.fit_cache: false` or bump the class attribute FIT_VERSION.
+A subclass that changes only runtime behaviour can set `FIT_AS = <parent class>`: it then shares the
+parent's cached fits (key and file as the parent; loaded fits are re-classed). It must not define fit /
+_fit* methods or module-level functions, and all its new params must be RUNTIME_PARAMS.
 
 Location: $PAIEC_FIT_CACHE (default /fs/clip-scratch/mgor/paiec-cache/fits), shared by worktrees;
 safe because the key covers the fit code.
@@ -34,6 +37,9 @@ def _params(pred):
                 out[k] = v
     out.update({k: v for k, v in vars(pred).items() if not k.startswith("_")})
     runtime = set(getattr(pred, "RUNTIME_PARAMS", ()))
+    base = getattr(type(pred), "FIT_AS", None)
+    if base is not None:   # runtime-only subclass: key as the parent class
+        out["name"] = base.name
     return {k: (list(v) if isinstance(v, tuple) else v) for k, v in sorted(out.items())
             if k not in runtime and k != "RUNTIME_PARAMS"}
 
@@ -59,7 +65,8 @@ def _fit_source(pred):
 
 
 def cache_key(pred, train_benchmarks, data_cfg, revision) -> str:
-    blob = json.dumps({"cls": type(pred).__name__, "params": _params(pred), "train": sorted(train_benchmarks),
+    cls = getattr(type(pred), "FIT_AS", None) or type(pred)
+    blob = json.dumps({"cls": cls.__name__, "params": _params(pred), "train": sorted(train_benchmarks),
                        "data": data_cfg, "rev": revision}, sort_keys=True, default=str)
     return hashlib.sha1((blob + _fit_source(pred)).encode()).hexdigest()[:20]
 
@@ -69,12 +76,15 @@ def fit_cached(pred, train, train_benchmarks, data_cfg, revision, enabled=True, 
     if not enabled:
         return pred.fit(train)
     key = cache_key(pred, train_benchmarks, data_cfg, revision)
-    path = Path(os.environ.get("PAIEC_FIT_CACHE", DEFAULT_DIR)) / f"{type(pred).__name__}_{key}.pkl"
+    base = getattr(type(pred), "FIT_AS", None)
+    path = Path(os.environ.get("PAIEC_FIT_CACHE", DEFAULT_DIR)) / f"{(base or type(pred)).__name__}_{key}.pkl"
     runtime = {k: getattr(pred, k) for k in getattr(pred, "RUNTIME_PARAMS", ())}
     if path.exists():
         try:
             with open(path, "rb") as f:
                 fitted = pickle.load(f)
+            if base is not None:   # a parent-class fit: adopt the runtime subclass
+                fitted.__class__ = type(pred)
             for k, v in runtime.items():
                 setattr(fitted, k, v)
             fitted.reset_runtime()
@@ -86,7 +96,13 @@ def fit_cached(pred, train, train_benchmarks, data_cfg, revision, enabled=True, 
     pred.fit(train)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(f".tmp{os.getpid()}")
-    with open(tmp, "wb") as f:
-        pickle.dump(pred, f, protocol=pickle.HIGHEST_PROTOCOL)
+    cls = type(pred)
+    if base is not None:   # store as the parent class, so parent-class runs load a plain parent
+        pred.__class__ = base
+    try:
+        with open(tmp, "wb") as f:
+            pickle.dump(pred, f, protocol=pickle.HIGHEST_PROTOCOL)
+    finally:
+        pred.__class__ = cls
     os.replace(tmp, path)
     return pred

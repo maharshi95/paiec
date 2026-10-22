@@ -1,0 +1,10 @@
+name: sel_ref6
+base: configs/sel/base.yaml
+cv:
+  train_benchmarks:
+  - matharena
+  - mmdocrag
+  - multi_swebench
+  - real_webagents
+  - researchcodebench
+  - swe_rebench

@@ -67,6 +67,8 @@ class IRT(Predictor):
     #   of benchmark is easy"); offset prior N(0, cross-benchmark error of that prediction).
     item_target = "centered"
     balance_benchmarks = False   # weight items 1/n_items(benchmark) in the item ridge
+    cv_groups = 10               # cross-benchmark residuals: benchmarks hashed into <= this many folds
+    max_ridge_items = 200_000    # item-ridge fit on a seeded sample (memory); Rasch uses all items
 
     # ---------------- fit ----------------
     def fit(self, train):
@@ -93,7 +95,10 @@ class IRT(Predictor):
         self.mu_beta = float(beta.mean())
         self.var_beta = max(float(beta.var()) if len(beta) > 1 else 1.0, 0.25)
 
-        # item difficulty prior
+        # item difficulty prior (ridge on a bounded, seeded sample of items)
+        if len(items_used) > self.max_ridge_items:
+            sel = np.sort(np.random.default_rng(0).choice(len(items_used), self.max_ridge_items, replace=False))
+            items_used, d, item_b = items_used[sel], d[sel], item_b[sel]
         X = self.ifeat.transform([train.items[i] for i in items_used])
         wts = None
         if self.balance_benchmarks:
@@ -113,8 +118,9 @@ class IRT(Predictor):
         Z = self.sfeat.transform([train.subjects[s] for s in pair_s])
         ident = [subject_identity(train.subjects[s]) for s in pair_s]
         resid = []
-        for b in benches if len(benches) > 1 else []:
-            out, inn = pair_b == b, pair_b != b
+        pair_g = self._fold_of(pair_b)
+        for g in np.unique(pair_g) if len(benches) > 1 else []:
+            out, inn = pair_g == g, pair_g != g
             pred = self._fit_subject(Z[inn], r[inn], [ident[k] for k in np.nonzero(inn)[0]])
             resid.append(r[out] - np.array([pred(Z[k], ident[k]) for k in np.nonzero(out)[0]]))
         full = self._fit_subject(Z, r, ident, keep=True)
@@ -123,6 +129,13 @@ class IRT(Predictor):
         else:
             self.var_u = max(float(np.mean((r - np.array([full(Z[k], ident[k]) for k in range(len(r))])) ** 2)) * 1.5, self.var_floor)
         return self
+
+    def _fold_of(self, bench):
+        """Map benchmark indices to <= cv_groups folds (each benchmark stays whole)."""
+        u = np.unique(bench)
+        if len(u) <= self.cv_groups:
+            return bench
+        return (np.searchsorted(u, bench) % self.cv_groups)
 
     def _fit_prior(self, X, y, groups, lam, enabled, weights=None, split_offset=False):
         """Ridge prior + cross-group (leave-one-benchmark-out) residual variance.
@@ -134,6 +147,7 @@ class IRT(Predictor):
         if not enabled:
             w, b = np.zeros(X.shape[1]), float(np.mean(y))
         res, offs = [], []
+        groups = self._fold_of(groups)
         for g in np.unique(groups) if len(np.unique(groups)) > 1 else []:
             m = groups != g
             wg, bg = ridge(X[m], y[m], lam, wsub(m)) if enabled else (w, float(np.mean(y[m])))

@@ -66,21 +66,57 @@ def _s(v) -> str:
     return str(v)
 
 
-def _binarize(name, values, cfg):
-    """Return (binary values, keep mask). cfg: {mode: exclude|threshold, threshold, per_benchmark}."""
+def parse_scale(raw) -> dict:
+    try:
+        return json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+    except (TypeError, ValueError):
+        return {}
+
+
+def _binarize(name, values, cfg, scale=None):
+    """Map recorded grades to {0,1}. Returns (y, keep mask, rule used).
+
+    cfg:
+      mode          exclude (binary benchmarks only) | threshold
+      threshold     cut on the scale normalised to [0, 1] by its declared bounds/values
+                    (observed min/max for `mixed` or missing bounds); default 0.5
+      per_benchmark {name: threshold | "exclude"} overrides
+      orient        flip lower_is_better scales (incl. binary) so 1 = good outcome; default False
+                    (keep recorded values, which is presumably what the platform scores)
+    Unordered (nominal) and unbounded scales are excluded under threshold mode.
+    """
+    scale = scale or {}
     vals = np.asarray(values, float)
     finite = np.isfinite(vals)
+    flip = bool(cfg.get("orient")) and scale.get("direction") == "lower_is_better"
     if set(np.unique(vals[finite])) <= {0.0, 1.0}:
-        return vals, finite
+        return (1 - vals if flip else vals), finite, "binary"
     rule = (cfg.get("per_benchmark") or {}).get(name, cfg.get("mode", "exclude"))
-    if rule == "exclude":
-        return vals, np.zeros(len(vals), bool)
+    none = (vals, np.zeros(len(vals), bool), "excluded")
+    if rule == "exclude" or scale.get("direction") == "unordered" or not finite.any():
+        return none
     t = float(rule) if not isinstance(rule, str) else float(cfg.get("threshold", 0.5))
-    return (vals >= t).astype(float), finite
+    lo, hi = scale.get("min"), scale.get("max")
+    if scale.get("values"):
+        lo, hi = min(scale["values"]), max(scale["values"])
+    if scale.get("kind") == "interval" and (lo is None or hi is None):
+        return none   # unbounded: no meaningful normalisation
+    if lo is None or hi is None:
+        lo, hi = float(vals[finite].min()), float(vals[finite].max())
+    if hi <= lo:
+        return none
+    z = (vals - lo) / (hi - lo)
+    if scale.get("direction") == "lower_is_better":
+        z = 1 - z   # graded "lower is better" scales are oriented before thresholding
+    y = (z >= t).astype(float)
+    return y, finite, f"threshold@{t}"
 
 
 def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="data/processed",
-                 use_cache=True) -> Dataset:
+                 use_cache=True, max_responses=None, max_item_chars=None) -> Dataset:
+    """max_responses: cap per benchmark by keeping a seeded random subset of *subjects* (each kept
+    pair keeps all of its items). max_item_chars: truncate stored item text (memory; featurizers
+    read at most a few thousand characters anyway)."""
     import pandas as pd
 
     root = Path(root)
@@ -89,7 +125,7 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
     slugs = sorted(p.name for p in root.iterdir() if (p / "formatted_tables").is_dir())
     if benchmarks:
         slugs = [s for s in slugs if s in benchmarks]
-    key = hashlib.sha1(json.dumps([revision, slugs, binarize], sort_keys=True).encode()).hexdigest()[:12]
+    key = hashlib.sha1(json.dumps(["v2", revision, slugs, binarize, max_responses, max_item_chars], sort_keys=True).encode()).hexdigest()[:12]
     cache = Path(cache_dir) / f"dataset_{key}.pkl"
     if use_cache and cache.exists():
         with open(cache, "rb") as f:
@@ -98,10 +134,16 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
     subjects, subject_ids, sidx = [], [], {}
     items, item_ids, item_bench, iidx = [], [], [], {}
     rs, ri, ry, bench_names = [], [], [], []
+    rules = {}
     for slug in slugs:
         t = root / slug / "formatted_tables"
-        resp = pd.read_parquet(t / "responses.parquet")
-        y, keep = _binarize(slug, resp.response.values, binarize)
+        if not all((t / f"{x}.parquet").exists() for x in TABLES):
+            continue   # partially downloaded
+        cat = pd.read_parquet(t / "benchmarks.parquet").iloc[0]
+        if cat.get("release", "public") != "public" and not binarize.get("include_withheld"):
+            continue
+        resp = pd.read_parquet(t / "responses.parquet", columns=["subject_id", "item_id", "interactors", "response"])
+        y, keep, rules[slug] = _binarize(slug, resp.response.values, binarize, parse_scale(cat.get("response_scale")))
         if not keep.any():
             continue
         b = len(bench_names)
@@ -112,20 +154,46 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
                 sidx[row.subject_id] = len(subjects)
                 subjects.append({f: _s(getattr(row, f, None)) for f in SUBJECT_FIELDS})
                 subject_ids.append(row.subject_id)
-        for row in pd.read_parquet(t / "items.parquet", columns=["item_id", "content", "item_features"]).itertuples(index=False):
-            if row.item_id not in iidx:
-                iidx[row.item_id] = len(items)
-                items.append({"item_content": _s(row.content), "item_features": _s(row.item_features),
-                              "interactors": "", "benchmark_id": anon})
-                item_ids.append(row.item_id)
-                item_bench.append(b)
         resp = resp[keep]
-        rs.append(resp.subject_id.map(sidx).values)
-        ri.append(resp.item_id.map(iidx).values)
-        ry.append(y[keep])
+        y = y[keep]
+        if max_responses and len(resp) > max_responses:
+            counts = resp.subject_id.value_counts()
+            order = sorted(counts.index, key=lambda x: hashlib.md5(f"{slug}|{x}".encode()).hexdigest())
+            keep_s, total = set(), 0
+            for sid in order:
+                if total and total + counts[sid] > max_responses:
+                    continue
+                keep_s.add(sid)
+                total += counts[sid]
+            m = resp.subject_id.isin(keep_s).values
+            resp, y = resp[m], y[m]
+        # a visible item is (item, interactors): interactors live on responses and are part of the input
+        inter = resp.interactors.fillna("").astype(str).values
+        needed = set(resp.item_id.unique())
+        meta = {}
+        for row in pd.read_parquet(t / "items.parquet", columns=["item_id", "content", "item_features"]).itertuples(index=False):
+            if row.item_id in needed and row.item_id not in meta:
+                c = _s(row.content)
+                meta[row.item_id] = (c[:max_item_chars] if max_item_chars else c, _s(row.item_features))
+        idx = np.empty(len(resp), np.int64)
+        for k, (iid, it) in enumerate(zip(resp.item_id.values, inter)):
+            key = (iid, it)
+            if key not in iidx:
+                iidx[key] = len(items)
+                content, feats = meta.get(iid, ("", ""))
+                items.append({"item_content": content, "item_features": feats, "interactors": it, "benchmark_id": anon})
+                item_ids.append(iid if not it else f"{iid}|{hashlib.sha1(it.encode()).hexdigest()[:8]}")
+                item_bench.append(b)
+            idx[k] = iidx[key]
+        s_idx = resp.subject_id.map(sidx).values
+        ok = ~np.isnan(s_idx.astype(float))   # drop responses whose subject is missing from subjects.parquet
+        rs.append(s_idx[ok].astype(np.int64))
+        ri.append(idx[ok])
+        ry.append(y[ok])
     ds = Dataset(subjects, items, np.array(item_bench), bench_names, subject_ids, item_ids,
                  np.concatenate(rs).astype(np.int64), np.concatenate(ri).astype(np.int64),
                  np.concatenate(ry).astype(float), revision)
+    ds.binarize_rules = rules
     if use_cache:
         cache.parent.mkdir(parents=True, exist_ok=True)
         with open(cache, "wb") as f:

@@ -1,10 +1,21 @@
 # measurement-db (training data)
 
-HF: `aims-foundations/measurement-db` (gated, CC-BY-SA-4.0; individual benchmarks keep their own licences — check `benchmarks.license`).
-Site claims 270 benchmarks / 8.4M items / 781 subjects / 92.1M responses; **the public HF release currently exposes only 6 benchmarks**
-(~1.1M rows excl. traces) at revision `54074453da7b9911be0f48e4c560be547bc84d21` (2026-10-07). ImageNet-Hard, VisualMemory, SWE-Together
-are `release: withheld`. The inventory sheet lists ~300 candidate benchmarks (curation_status mostly blank) — **only inventory sources are
-permitted for training**; the set may grow (participant contributions). Pin a revision; re-run `scripts/download_data.py` to refresh.
+HF: `aims-foundations/measurement-db` (gated, CC-BY-SA-4.0). Individual benchmarks keep their own licences; check `benchmarks.license`.
+
+**Correction (2026-10-22): the repo holds 281 benchmark folders, not 6.** The HF dataset viewer declares configs for only the 6 "supplemental reference" benchmarks, which is what we first saw. The tabular-builder migration checkpoint added 249 more (`tabular_checkpoint.json`, `checkpoint_status.json`). At revision `54074453`:
+- 278 benchmarks are `release: public`.
+- 3 are withheld: imagenet_hard, visual_memory, swe_together.
+- The whole repo is 713 GB, mostly `raw/` source archives and traces.
+- Core formatted tables (benchmarks, subjects, items, responses) total **14.8 GB**; traces are another 108 GB.
+
+**Local copy.** All public core tables live at `/fs/clip-scratch/mgor/measurement-db/<benchmark>/formatted_tables/`. They were downloaded in 4 minutes with `python scripts/download_data.py --all`, and the revision is in `REVISION`. The same directory holds:
+- `inventory.csv` (`scripts/mdb_inventory.py`): per-benchmark table sizes plus catalog fields;
+- `benchmark_report.csv` (`scripts/benchmark_report.py`): usefulness stats and a tier for train/eval selection.
+
+The six benchmarks in `data/raw` are the original subset.
+
+Response types across the 281: binary 163, mixed 49, continuous_bounded 17, continuous 14, ordinal 14, fraction 8, likert 7, continuous_unbounded 5, nominal 2, win_rate 2.
+`load_dataset` binarises using each benchmark's declared `response_scale`. It normalises to [0, 1] by the declared bounds or values (observed min/max for `mixed`), thresholds there, and excludes unordered or unbounded scales. `binarize.orient` optionally flips `lower_is_better` scales. Some binary benchmarks are lower-is-better, e.g. safety "1 = attack success". How the platform orients those is unknown.
 
 Cite: Truong, Truong, Koyejo. *The AI Measurement Data Bank*, 2026. <https://aimslab.stanford.edu/measurement-db>
 
@@ -19,7 +30,7 @@ Join all tables from the **same revision**. IDs are hashed 16-hex strings; `item
 - **responses** (8): subject_id, item_id, response_id, benchmark_id, trial (int), test_condition, interactors, response (float64; null = ungraded attempt)
 - **traces** (8, large ~1GB): model outputs, joined on response_id. Not in competition input; may be used for training features only.
 
-## Public benchmarks at the pinned revision
+## The six reference benchmarks (data/raw)
 | benchmark | scale | subjects | items | responses | max trial | mean resp | pairs ≥80 items |
 |---|---|---|---|---|---|---|---|
 | matharena | **mixed** (15 values: final-answer + proof criterion grades) | 104 | 1,755 | 92,944 | 200 | 0.654 | 81/104 |

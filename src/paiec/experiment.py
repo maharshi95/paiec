@@ -31,19 +31,23 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
     if ds is None:
         from .data.dataset import load_dataset
         d = cfg["data"]
-        ds = load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"])
+        ds = load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"],
+                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"))
     benches = [b for b in (cfg["data"]["benchmarks"] or ds.benchmarks()) if b in ds.benchmarks()]
     folds = cfg["cv"]["test_benchmarks"] or benches
     cv, sim = cfg["cv"], cfg["sim"]
     rows, folds_out, timing = [], {}, {"fit_s": 0.0, "acq_calls": 0, "acq_s": 0.0, "eval_inputs": 0, "eval_s": 0.0}
-    for test_b in folds:
-        train = ds.restrict([b for b in benches if b != test_b])
+    for fold in folds:
+        group = [fold] if isinstance(fold, str) else list(fold)
+        group = [b for b in group if b in benches]
+        test_b = group[0] if len(group) == 1 else "+".join(group)
+        train = ds.restrict([b for b in (cv.get("train_benchmarks") or benches) if b in benches and b not in group])
         t0 = time.perf_counter()
         pred = build_predictor(cfg["predictor"]).fit(train)
         timing["fit_s"] += time.perf_counter() - t0
         seed_alcs, seed_budget = [], []
         for seed in cv["seeds"]:
-            pairs = build_pairs(ds, [test_b], cv["split_seed"], seed, cv["min_items"],
+            pairs = build_pairs(ds, group, cv["split_seed"], seed, cv["min_items"],
                                 cv["max_subjects_per_benchmark"], cv["max_eval_items_per_pair"])
             if not pairs:
                 break
@@ -66,6 +70,9 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
         if verbose:
             print(f"  {test_b:>18}: ALC {folds_out[test_b]['alc']:.4f} ± {folds_out[test_b]['alc_seed_std']:.4f} "
                   f"({len(pairs)} pairs)")
+    bench_alc = {}
+    for r in rows:
+        bench_alc.setdefault(r["benchmark"], []).append(r["alc"])
     metrics = {
         "name": cfg["name"],
         "alc": float(np.mean([f["alc"] for f in folds_out.values()])),
@@ -73,6 +80,7 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
         "ece_alc": float(np.mean([r["ece_alc"] for r in rows])),
         "by_budget": {str(n): float(np.mean([f["by_budget"][str(n)] for f in folds_out.values()])) for n in BUDGETS},
         "folds": folds_out,
+        "benchmarks": {b: {"alc": float(np.mean(v)), "n": len(v)} for b, v in sorted(bench_alc.items())},
         "timing": timing,
         "predictor": cfg["predictor"], "acquisition": cfg["acquisition"], "sim": sim,
         "data_revision": ds.revision, "git_sha": _git_sha(),

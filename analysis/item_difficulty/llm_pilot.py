@@ -47,7 +47,8 @@ def chash(s):
     return hashlib.sha256(s.encode()).hexdigest()[:16]
 
 
-def prepare():
+def prepare(which="pilot"):
+    """which="pilot": 100 trusted items per benchmark stratified by d; "all": every item (for LOBO / e2e)."""
     sys.path.insert(0, str(Path(__file__).parent))
     import numpy as np
     from common import targets
@@ -61,6 +62,17 @@ def prepare():
     rng = np.random.default_rng(0)
     LLM_DIR.mkdir(parents=True, exist_ok=True)
     n = 0
+    if which == "all":
+        with open(LLM_DIR / "input_all.jsonl", "w") as f:
+            for j in range(len(df)):
+                c = df.content[j]
+                text = c if len(c) <= MAX_CHARS else fv[j]
+                if df.item_features[j]:
+                    text = f"[metadata: {df.item_features[j]}]\n" + text
+                f.write(json.dumps({"idx": int(df.idx[j]), "bench": df.bench[j], "hash": chash(text),
+                                    "prompt": prompt_for(text)}) + "\n")
+        print("wrote", len(df), "items")
+        return
     with open(LLM_DIR / "input.jsonl", "w") as f:
         for b, g in df[trusted].groupby("bench"):
             g = g.drop_duplicates("content")
@@ -98,19 +110,27 @@ def parse(text):
         return None
 
 
-def run(model="Qwen/Qwen3-8B"):
+def run(model="Qwen/Qwen3-8B", inp="input"):
     from vllm import LLM, SamplingParams
 
-    rows = [json.loads(l) for l in open(LLM_DIR / "input.jsonl")]
+    rows = [json.loads(l) for l in open(LLM_DIR / f"{inp}.jsonl")]
+    # cache per content hash: identical prompts are generated once
+    uniq = {}
+    for r in rows:
+        uniq.setdefault(r["hash"], r)
+    print(f"{len(rows)} rows, {len(uniq)} unique prompts")
     llm = LLM(model=model, max_model_len=8192, gpu_memory_utilization=0.85)
     tok = llm.get_tokenizer()
     prompts = [tok.apply_chat_template([{"role": "system", "content": SYSTEM}, {"role": "user", "content": r["prompt"]}],
                                        tokenize=False, add_generation_prompt=True, enable_thinking=False) for r in rows]
-    outs = llm.generate(prompts, SamplingParams(temperature=0.0, max_tokens=512))
-    tag = model.split("/")[-1]
+    keys = list(uniq)
+    prompts = [prompts[[r["hash"] for r in rows].index(k)] for k in keys] if len(keys) < len(rows) else prompts
+    outs = dict(zip(keys, llm.generate(prompts, SamplingParams(temperature=0.0, max_tokens=512))))
+    tag = model.split("/")[-1] + ("" if inp == "input" else "_" + inp)
     ok = 0
     with open(LLM_DIR / f"output_{tag}.jsonl", "w") as f:
-        for r, o in zip(rows, outs):
+        for r in rows:
+            o = outs[r["hash"]]
             txt = o.outputs[0].text
             j = parse(txt)
             ok += j is not None
@@ -167,9 +187,102 @@ def score(model="Qwen3-8B"):
     print("Spearman over benchmarks, mean_p_frontier vs mean_rate:", round(spearmanr(g.mean_p_frontier, g.mean_rate)[0], 2))
     print("\ntask_type by benchmark:\n", pd.crosstab(df.bench, df.task_type).to_string())
     df.drop(columns=["json"]).to_pickle(LLM_DIR / f"scored_{model}.pkl")
+    lobo_llm(df)
+
+
+def lobo_llm(df):
+    """LOBO on the 600 pilot items: ridge on per-benchmark z-scored LLM features (+ hand-crafted), vs single scores."""
+    import numpy as np
+    import pandas as pd
+    from scipy.stats import spearmanr
+    from sklearn.linear_model import Ridge
+    sys.path.insert(0, str(Path(__file__).parent))
+    from features import build
+
+    df = df.copy()
+    df["log_size"] = np.log1p(df.expected_solution_size.clip(0, 1e5))
+    llm_cols = ["difficulty_1_10", "logit_pf", "log_minutes", "n_reasoning_steps", "n_constraints", "log_size",
+                "ambiguity", "needs_tools_or_environment", "needs_unseen_inputs", "p_solve_small"]
+    feats = build()
+    hand_cols = [c for c in feats.columns if c not in ("idx", "bench") and not c.startswith("h_")]
+    df = df.merge(feats[["idx"] + hand_cols], on="idx", how="left")
+
+    def bz(X, g):
+        X = X.astype(float).copy()
+        for b in np.unique(g):
+            m = g == b
+            X[m] = (X[m] - np.nanmean(X[m], 0)) / (np.nanstd(X[m], 0) + 1e-6)
+        return np.nan_to_num(X)
+    g = df.bench.values
+    sets = {"llm_all": bz(df[llm_cols].values, g), "hand_bz": bz(df[hand_cols].values, g)}
+    sets["llm_all+hand_bz"] = np.hstack([sets["llm_all"], sets["hand_bz"]])
+    rows = []
+    for name, X in sets.items():
+        for b in np.unique(g):
+            tr, te = g != b, g == b
+            w = 1.0 / pd.Series(g[tr]).map(pd.Series(g[tr]).value_counts()).values
+            p = Ridge(alpha=30.0).fit(X[tr], df.d.values[tr], sample_weight=w).predict(X[te])
+            rows.append({"variant": name, "bench": b, "spearman": spearmanr(p, df.d.values[te])[0]})
+    for k in ("difficulty_1_10", "log_size", "log_minutes"):
+        for b in np.unique(g):
+            m = g == b
+            rows.append({"variant": "raw " + k, "bench": b, "spearman": spearmanr(df[k].values[m], df.d.values[m], nan_policy="omit")[0]})
+    R = pd.DataFrame(rows).pivot(index="variant", columns="bench", values="spearman")
+    R["mean5"] = R[[c for c in R.columns if c != "swe_rebench"]].mean(1)
+    print("\nLOBO on the pilot items (ridge alpha=30, equal benchmark weight): Spearman with fitted d")
+    print(R.round(2).to_string())
+    R.round(3).to_csv(LLM_DIR / "lobo_llm.csv")
+
+
+def table(tag="Qwen3-8B_input_all"):
+    """All-item LLM features -> llm/feat_<tag>.npy aligned with targets() rows (per-benchmark z-scored, transductive)
+    and tables/llm_<tag>.npz for e2e.py."""
+    import numpy as np
+    import pandas as pd
+    sys.path.insert(0, str(Path(__file__).parent))
+    from common import OUT, targets
+    from e2e import ikey
+
+    df = targets().reset_index(drop=True)
+    out = {}
+    for l in open(LLM_DIR / f"output_{tag}.jsonl"):
+        r = json.loads(l)
+        out[r["idx"]] = r["json"] or {}
+
+    def num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return np.nan
+    cols = []
+    rows = []
+    for i in df.idx:
+        j = out.get(int(i), {})
+        pf = min(max(num(j.get("p_solve_frontier")), 0.01), 0.99) if j.get("p_solve_frontier") is not None else np.nan
+        ps = min(max(num(j.get("p_solve_small")), 0.01), 0.99) if j.get("p_solve_small") is not None else np.nan
+        rows.append([num(j.get("difficulty_1_10")), np.log(pf / (1 - pf)) if pf == pf else np.nan,
+                     np.log(ps / (1 - ps)) if ps == ps else np.nan,
+                     np.log1p(min(max(num(j.get("expert_minutes")), 0), 1e4)), num(j.get("n_reasoning_steps")),
+                     num(j.get("n_constraints")), np.log1p(min(max(num(j.get("expected_solution_size")), 0), 1e5)),
+                     num(j.get("ambiguity")), num(j.get("needs_tools_or_environment")), num(j.get("needs_unseen_inputs"))])
+    cols = ["difficulty", "logit_pf", "logit_ps", "log_minutes", "steps", "constraints", "log_size", "ambiguity",
+            "tools", "unseen"]
+    X = np.array(rows, float)
+    g = df.bench.values
+    for b in np.unique(g):
+        m = g == b
+        mu, sd = np.nanmean(X[m], 0), np.nanstd(X[m], 0) + 1e-6
+        X[m] = (X[m] - mu) / sd
+    X = np.nan_to_num(X)
+    np.save(LLM_DIR / f"feat_{tag}.npy", X)
+    keys = np.array([ikey({"item_content": c, "item_features": f}) for c, f in zip(df.content, df.item_features)])
+    (OUT / "tables").mkdir(exist_ok=True)
+    np.savez(OUT / "tables" / f"llm_{tag}.npz", X=X.astype(np.float32), keys=keys)
+    np.savez(OUT / "tables" / f"llmdiff_{tag}.npz", X=X[:, :1].astype(np.float32), keys=keys)
+    print("features", cols, X.shape)
 
 
 if __name__ == "__main__":
     cmd = sys.argv[1]
     arg = sys.argv[2:]
-    {"prepare": prepare, "run": run, "score": score}[cmd](*arg)
+    {"prepare": prepare, "run": run, "score": score, "table": table}[cmd](*arg)

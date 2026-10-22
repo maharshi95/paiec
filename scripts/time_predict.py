@@ -30,7 +30,8 @@ def main():
     a = ap.parse_args()
     cfg = load_config(a.config, a.set)
     d = cfg["data"]
-    ds = load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"])
+    ds = load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"],
+                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"))
     benches = [b for b in (d["benchmarks"] or ds.benchmarks()) if b in ds.benchmarks()]
     t0 = time.perf_counter()
     pred = build_predictor(cfg["predictor"]).fit(ds.restrict([b for b in benches if b != a.benchmark]))

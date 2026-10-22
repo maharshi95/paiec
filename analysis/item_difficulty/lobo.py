@@ -190,8 +190,11 @@ def run_lobo(name, X, df, trusted, kind="ridge", target="d", wmode="equal", zsco
         r = metrics(y_eval[te], p)
         r["skill_shrunk"] = metrics(y_eval[te], c * (p - p.mean()))["skill"]
         r["shrink"] = c
+        bb = beta_by_bench()
         if absolute:
             r["offset_err"] = float(p.mean() - y[te].mean())
+        else:  # implied offset error when the centred prior's mean shift on b acts as a benchmark offset
+            r["offset_err"] = float(p.mean() - np.mean([bb[c] for c in bb if c != b]) + bb[b])
         r.update({"variant": name, "fold": b, "hp": hp, "n_test": int(te.sum())})
         out.append(r)
     return out
@@ -257,6 +260,10 @@ def feature_sets(df, feats, quick=False):
     lazy("tfidf_w12_focus4k", focus_tfidf)
     lazy("tfidf_w12_headtail4k", tfidf("word", (1, 2), lambda c: headtail(c, 4000)))
 
+    for f in sorted((OUT / "llm").glob("feat_*.npy")):
+        lazy("llm_" + f.stem[5:], (lambda f=f: np.load(f).astype(float)))
+        lazy("llm_" + f.stem[5:] + "+hand_bz", (lambda f=f: np.hstack([np.load(f).astype(float), zstd(H, groups)])))
+        lazy("llmdiff_" + f.stem[5:], (lambda f=f: np.load(f).astype(float)[:, :1]))
     for f in sorted((OUT / "emb").glob("*.npy")):
         key = f.stem
         lazy("emb_" + key, (lambda f=f: np.load(f).astype(float)))
@@ -301,6 +308,8 @@ def main():
     S = feature_sets(df, feats)
     exps = list(EXPERIMENTS)
     for k in S:
+        if k.startswith("llm"):
+            exps.append((k + "|ridge", k, "ridge", {}))
         if k.startswith("emb_"):
             exps.append((k + "|ridge", k, "ridge", {}))
             if "+hand" not in k:

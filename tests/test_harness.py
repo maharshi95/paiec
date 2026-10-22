@@ -102,7 +102,7 @@ def test_build_submission(ds, tmp_path):
 @pytest.mark.parametrize("name", sorted(PREDICTORS))
 def test_incremental_state_matches_fresh(ds, name):
     """extend() on growing evidence must give the same predictions as adapt() from scratch."""
-    pred = build_predictor({"name": name, **({"adapt_iters": 200} if name in ("irt", "mirt") else {})})
+    pred = build_predictor({"name": name, **({"adapt_iters": 200} if name in ("irt", "irt_h", "mirt") else {})})
     pred.fit(ds.restrict(["bench0", "bench1"]))
     ev = _evidence(ds, 120)
     inp = [ds.subjects[1], ds.items[260]]
@@ -200,3 +200,23 @@ def test_build_pairs_counts_source_items_and_keeps_variants_together(ds):
     for p in build_pairs(d2, ["bench2"]):
         src = lambda i: d2.item_ids[i].split("|")[0]
         assert len(p.acq) == 50 and not {src(i) for i in p.acq} & {src(i) for i in p.evl}
+
+
+def test_irt_h_hyper_contracts(ds):
+    """irt_h with every hierarchical part on: batch = single, incremental = fresh, and off = irt."""
+    hyp = {"nu_u": 10.0, "nu_d": 10.0, "tau_u": 0.5, "tau_d": 0.5}
+    pred = build_predictor({"name": "irt_h", "adapt_iters": 300, **hyp}).fit(ds.restrict(["bench0", "bench1"]))
+    ev = _evidence(ds, 120)
+    inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::97], ds.resp_i[::97])]
+    batch = pred.predict_batch(inputs, ev)
+    assert np.allclose(batch, [pred.predict(list(x), ev) for x in inputs])
+    inp = [ds.subjects[1], ds.items[260]]
+    pred.reset_runtime()
+    for n in (10, 60, 120):
+        pred.predict(inp, ev[:n])
+    inc = pred.predict(inp, ev)
+    pred.reset_runtime()
+    assert inc == pytest.approx(pred.predict(inp, ev), abs=1e-5)
+    off = build_predictor({"name": "irt_h"}).fit(ds.restrict(["bench0", "bench1"]))
+    ref = build_predictor({"name": "irt"}).fit(ds.restrict(["bench0", "bench1"]))
+    assert np.allclose(off.predict_batch(inputs, ev), ref.predict_batch(inputs, ev))

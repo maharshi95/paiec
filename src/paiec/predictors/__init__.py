@@ -1,9 +1,10 @@
 from .base import Predictor
 from .irt import IRT
+from .irt_h import IRTH
 from .mirt import MIRT
 from .simple import BetaShrink, Constant, EmpiricalMean
 
-PREDICTORS = {cls.name: cls for cls in (Constant, EmpiricalMean, BetaShrink, IRT, MIRT)}
+PREDICTORS = {cls.name: cls for cls in (Constant, EmpiricalMean, BetaShrink, IRT, IRTH, MIRT)}
 
 
 def build_predictor(cfg: dict) -> Predictor:

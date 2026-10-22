@@ -44,6 +44,8 @@ Join all tables from the **same revision**. IDs are hashed 16-hex strings; `item
 (threshold, or treat as Bernoulli soft label) — the test-pool conversion rule is unknown → see `docs/open-questions.md`.
 
 ## Gotchas
+- **Duplicate items across benchmarks.** 18 benchmarks share more than 1% of items with another, e.g. alpacaeval ⊂ jetts, xstest ⊂ mergebench (`item_overlap.csv`). Never evaluate on one while training on its partner.
+- **Model names are inconsistent across benchmarks.** `normalized_name` is missing for 58% of subjects. Use `features/identity.py` (canonical identity from visible fields) for any cross-benchmark matching.
 - The 6 reference benchmarks alone give only 5 LOBO folds (high variance). Use the 57-benchmark panel (`benchmark-selection.md`, `validation.md`) for decisions.
 - Subject identities are noisy (null normalized_name). Parse `subject_features_extra` (model_config/source_model_name) for model family, size, "Think", date.
 - `trial` > 1 means repeated runs of same (subject,item): each trial is a separate target, labels at test time are per (subject,item) pair.

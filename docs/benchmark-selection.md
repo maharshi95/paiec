@@ -47,3 +47,31 @@ Follow-ups:
 - greedy or domain-level inclusion tests;
 - weighting training benchmarks by similarity to the test benchmark;
 - whether `lower_is_better` binary benchmarks (`binarize.orient`) should be flipped for cross-benchmark subject priors.
+
+## Ref6-seen eval split (2026-10-22; `configs/split_seen/`, the current default protocol)
+**Goal:** eval benchmarks whose *models* already appear in the six reference benchmarks, as on the hosted platform, which presumably draws subjects from a similar population, while staying diverse.
+
+**Model identity.** Raw names differ across benchmarks (`claude-3-5-sonnet-20241022`, `Anthropic Claude 3.5 Sonnet`, `GPT_4O_2024_08_06`). `features/identity.py` canonicalises them to token sets, dropping org prefixes, dates, active-parameter tags and mode words. The ref6 benchmarks contain 271 canonical identities. 19% of pool subjects match one, and identity from visible fields alone matches almost as well as with `display_name` (19.0% vs 19.4%). Per-benchmark counts are in `analysis/subjects/ref6_overlap.py` → `ref6_overlap.csv`.
+
+**Leakage guard.** `analysis/subjects/item_overlap.py` → `item_overlap.csv` compares item content hashes. **18 benchmarks share more than 1% of their items with another benchmark.** For example:
+- alpacaeval and tulu_human_eval are 100% inside jetts;
+- helm_xstest and xstest are inside mergebench;
+- helm_harmbench shares 59% with mergebench;
+- adaptivestep, felm and prox overlap;
+- matharena_platform shares 6% with matharena;
+- the SWE benchmarks overlap slightly.
+
+Eval candidates with more than 1% overlap are excluded.
+
+**Criteria** (`make_selection.write_seen_split`):
+- tier A, not ref6, ≤1% shared items;
+- base rate in [0.05, 0.95], subject sd ≥ 0.05, item sd ≥ 0.15;
+- **≥6 distinct ref6 models with eligible (≥80-item) pairs**: distinct models, not pairs, since e.g. alignment_faking has 1,721 seen pairs from only 2 models;
+- ≤2 per name family (helm_*, medhelm_*), ≤4 per primary domain.
+
+**Result:** 42 benchmarks over 15 domains (`configs/split_seen/eval_benchmarks.csv`).
+- Hold-out (12, one per domain): tengu, livebench, hallusionbench, medhelm_ehr_sql, tau2_bench, software_world_models, naturebench, hle, lambda_fp_course, mathconstraint, dtap_bench, bigfinancebench.
+- Dev: 30 in 5 folds of 6.
+- **Eval pairs are restricted to ref6-seen models** (`cv.eval_seen_from: ref6`).
+- Capped training benchmarks keep ref6-seen subjects first (`data.prefer_seen_from`).
+- The ref6 benchmarks are always training-only.

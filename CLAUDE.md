@@ -6,6 +6,7 @@ Start with `docs/README.md` (the docs index), `docs/experiment-plan.md` (status 
 - **Task:** predict P(correct) for an (anonymous) unseen benchmark's items with `predict(input, labeled)`. Labels are revealed by a streaming `acquisition_function`. Metric: Brier ALC over budgets 0, 1, 3, 7, 15, 31; lower is better. Deadline **2026-10-30 AoE**.
 - **`labeled` is global** (every pair's revealed labels), confirmed from the organizers' client. See `docs/submission-format.md`.
 - **Data:** measurement-db has **281 benchmarks** (278 public), not 6. Core tables for all of them are in `/fs/clip-scratch/mgor/measurement-db` (15 GB, revision 54074453), with `inventory.csv` and `benchmark_report.csv`. `data/raw` holds only the 6 reference benchmarks.
+- **Default validation protocol:** `configs/split_seen/{dev,holdout}_*.yaml`. These are eval benchmarks with ref6-seen models, diverse and leakage-guarded (`docs/validation.md`). The hold-out is locked: milestones only.
 - **Default model:** `configs/irt.yaml`, i.e. unidimensional amortised IRT with content-based item priors, global-evidence MAP and uncertainty acquisition (`docs/model.md`).
 
 ## Working conventions

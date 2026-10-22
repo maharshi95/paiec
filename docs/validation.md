@@ -39,6 +39,9 @@ Outputs in `runs/<name>/metrics.json`:
 | cost | 5–10 min per run on 1 CPU | one Slurm CPU job per variant (8 CPUs, 60 GB) |
 | weakness | 5 test benchmarks: high variance, easy to overfit | hyperparameters tuned on the same folds they are reported on |
 
+## Current default protocol: ref6-seen split (`configs/split_seen/`)
+Same mechanics as below, but eval benchmarks are chosen for *models seen in ref6* and diversity, with a leakage guard (`benchmark-selection.md`). Eval pairs are restricted to ref6-seen models (`cv.eval_seen_from`). Dev has 30 benchmarks in 5 folds; the hold-out has 12. Earlier `configs/split/` numbers (random-model panel) are not comparable.
+
 ## Locked hold-out set (implemented 2026-10-22: `configs/split/`, `scripts/make_selection.py`)
 Every number so far is reported on the folds used to choose settings: the radius, beta_var_mult, item_target and the training pool. With ~30 configurations compared, that is optimistically biased. The cure is a **dev / hold-out split of benchmarks**:
 - **dev** (≈ 45 panel benchmarks): grouped 5-fold CV as above. Use it for every comparison and sweep.

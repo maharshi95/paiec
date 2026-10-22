@@ -31,7 +31,7 @@ class IRTItem(IRT):
     name = "irt_item"
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
-                                           "kv_numeric", "eb_nu")
+                                           "kv_numeric", "eb_nu", "eb_eps_nu")
     rp_frac = 0.0
     rp_dim = 64
     rp_seed = 0
@@ -42,12 +42,19 @@ class IRTItem(IRT):
     # online empirical Bayes: per-benchmark scales of the kv-key and content-map variances, learned by EM with
     # a pseudo-count eb_nu (groups / map dims) toward the configured fraction. 0 = fixed fractions.
     eb_nu = 0.0
+    eb_eps_nu = 0.0         # same for the item-specific variance (pseudo-count in items); 0 = fixed
 
     # ---------------- item info (cached, pure) ----------------
-    def _proj(self):
-        if getattr(self, "_cache_R", None) is None or self._cache_R.shape[1] != int(self.rp_dim):
+    def online_features(self, items, X):
+        """Feature vectors for the online content map (one row per item). Default: the IRT prior's own
+        features X (ItemFeaturizer). Override or swap the featurizer here to use another representation."""
+        return X
+
+    def _proj(self, n_in):
+        R = getattr(self, "_cache_R", None)
+        if R is None or R.shape != (n_in, int(self.rp_dim)):
             rng = np.random.default_rng(int(self.rp_seed))
-            self._cache_R = rng.standard_normal((self.ifeat.n_features, int(self.rp_dim))) / np.sqrt(self.rp_dim)
+            self._cache_R = rng.standard_normal((n_in, int(self.rp_dim))) / np.sqrt(self.rp_dim)
         return self._cache_R
 
     def _kv_tokens(self, item):
@@ -77,7 +84,11 @@ class IRTItem(IRT):
         if todo:
             X = self.ifeat.transform(list(todo.values()))
             yh = X @ self.w_i + self.b_i
-            Z = X.astype(np.float64) @ self._proj() if self.rp_frac > 0 else np.zeros((len(X), 0))
+            if self.rp_frac > 0:
+                F = self.online_features(list(todo.values()), X)
+                Z = F.astype(np.float64) @ self._proj(F.shape[1])
+            else:
+                Z = np.zeros((len(X), 0))
             for n, (k, i) in enumerate(todo.items()):
                 ck = "ct:%08x" % zlib.crc32(i.get("item_content", "").encode())
                 ci[k] = (float(yh[n]), Z[n], self._kv_tokens(i), ck)
@@ -199,6 +210,9 @@ class IRTItem(IRT):
         sh = shared()
         iters = int(self.item_iters) or self.adapt_iters
         nu = float(self.eb_nu)
+        nu_e, var_e0 = float(self.eb_eps_nu), var_e
+        if warm and nu_e > 0 and warm.get("var_e"):
+            var_e = warm["var_e"]
         for _ in range(iters):
             d = yh + sh + eps
             if self.learn_bench:
@@ -208,7 +222,10 @@ class IRTItem(IRT):
             delta += (np.bincount(P, y - mu, nP) - (delta - u) / var_u) / (np.bincount(P, mu * (1 - mu), nP) + 1 / var_u)
             if self.learn_items:
                 mu = sigmoid(beta + delta[P] - d[J])
-                eps += (-np.bincount(J, y - mu, nJ) - eps / var_e) / (np.bincount(J, mu * (1 - mu), nJ) + 1 / var_e)
+                h = np.bincount(J, mu * (1 - mu), nJ)
+                eps += (-np.bincount(J, y - mu, nJ) - eps / var_e) / (h + 1 / var_e)
+                if nu_e > 0:
+                    var_e = (float((eps ** 2 + 1 / (h + 1 / var_e)).sum()) + nu_e * var_e0) / (nJ + nu_e)
                 d = yh + sh + eps
                 if use_rp:
                     mu = sigmoid(beta + delta[P] - d[J])
@@ -252,7 +269,7 @@ class IRTItem(IRT):
                "delta": {sk: (float(delta[kk]), float(vdel[kk])) for sk, kk in pidx.items()},
                "eps": {ik: float(eps[kk]) for ik, kk in iidx.items()},
                "g": {t: (float(g[gi]), float(vg[gi])) for t, gi in gidx.items()},
-               "gs2": {bk: float(s2[bi]) for bi, bk in enumerate(bkeys)}}
+               "gs2": {bk: float(s2[bi]) for bi, bk in enumerate(bkeys)}, "var_e": float(var_e)}
         if use_rp:
             Hm = (Zc * heff[:, None]).T @ Zc + np.eye(k) / t2
             Sw = np.linalg.inv(Hm)
@@ -267,7 +284,7 @@ class IRTItem(IRT):
     # ---------------- score ----------------
     def _item_post(self, st, inf):
         """(mean, var) of an unlabeled item's difficulty given a benchmark state (or None)."""
-        m, v = inf[0], self._var_eps()
+        m, v = inf[0], (st["var_e"] if st else self._var_eps())
         for t, a in self._groups(inf):
             prior = (0.0, st["gs2"].get(t.split("=", 1)[0] if t.startswith("kv:") else "ct", 1.0)) if st else (0.0, 1.0)
             gm, gv = st["g"].get(t, prior) if st else prior

@@ -31,8 +31,13 @@ class IRTH(IRT):
     min_var_mult = 0.05  # learned variance >= this x the training variance
     max_var_mult = 20.0
     score_var_mult = 1.0  # multiplies the summed posterior variance in the probit marginalisation
+    # vi: mean-field Gaussian VI instead of the joint MAP. Each Newton step uses the expected likelihood:
+    #   residual y - E[sigmoid(eta)] ~= y - sigmoid(m / kappa), curvature E[sigmoid'] ~= sigmoid'(m / kappa) / kappa,
+    #   kappa = sqrt(1 + pi v / 8), v = summed current posterior variances of the observation's terms.
+    #   The joint MAP attenuates the offset/abilities when items carry large, weakly identified variances.
+    vi = False
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("nu_u", "nu_d", "tau_u", "tau_d", "em_start", "min_var_mult",
-                                           "max_var_mult", "score_var_mult")
+                                           "max_var_mult", "score_var_mult", "vi")
 
     def extend(self, state, new):
         if self.subject_sharing:
@@ -91,32 +96,49 @@ class IRTH(IRT):
         learn_u = self.nu_u > 0 or self.tau_u > 0
         learn_d = self.nu_d > 0 or self.tau_d > 0
         lo, hi = self.min_var_mult, self.max_var_mult
+        vb, vdel, vd = var_b, np.full(nP, s2u), np.full(nJ, s2d)
+        if warm and self.vi and "vb" in warm:
+            vb = warm["vb"]
+            vdel = np.array([warm["delta"].get(sk, (0, s2u))[1] for sk in pidx])
+            vd = np.array([warm["d"].get(ik, (0, s2d))[1] for ik in iidx])
+
+        def lik():
+            eta = beta + delta[P] - d[J]
+            if not self.vi:
+                mu = sigmoid(eta)
+                return mu, mu * (1 - mu)
+            kap = np.sqrt(1 + np.pi * ((vb if self.learn_bench else 0.0) + vdel[P] + vd[J]) / 8)
+            mu = sigmoid(eta / kap)
+            return mu, mu * (1 - mu) / kap
+
         for it in range(self.adapt_iters):
             if self.learn_bench:
-                mu = sigmoid(beta + delta[P] - d[J])
-                beta += ((y - mu).sum() - (beta - self.mu_beta) / var_b) / ((mu * (1 - mu)).sum() + 1 / var_b)
-            mu = sigmoid(beta + delta[P] - d[J])
-            w = mu * (1 - mu)
-            hP = np.bincount(P, w, nP)
-            delta += (np.bincount(P, y - mu, nP) - (delta - lam_u * u) / s2u) / (hP + 1 / s2u)
+                mu, w = lik()
+                hb = w.sum() + 1 / var_b
+                beta += ((y - mu).sum() - (beta - self.mu_beta) / var_b) / hb
+                vb = 1 / hb
+            mu, w = lik()
+            hP = np.bincount(P, w, nP) + 1 / s2u
+            delta += (np.bincount(P, y - mu, nP) - (delta - lam_u * u) / s2u) / hP
+            vdel = 1 / hP
             if learn_u and it >= self.em_start:
-                lam_u, s2u = self._hyper(delta, 1 / (hP + 1 / s2u), u, var_u, self.nu_u, self.tau_u, s2u, lo, hi)
+                lam_u, s2u = self._hyper(delta, vdel, u, var_u, self.nu_u, self.tau_u, s2u, lo, hi)
             if self.learn_items:
-                mu = sigmoid(beta + delta[P] - d[J])
-                w = mu * (1 - mu)
-                hJ = np.bincount(J, w, nJ)
+                mu, w = lik()
+                hJ = np.bincount(J, w, nJ) + 1 / s2d
                 pm = cb + lam_d * yc
-                d += (-np.bincount(J, y - mu, nJ) - (d - pm) / s2d) / (hJ + 1 / s2d)
+                d += (-np.bincount(J, y - mu, nJ) - (d - pm) / s2d) / hJ
+                vd = 1 / hJ
                 if learn_d and it >= self.em_start:
-                    lam_d, s2d = self._hyper(d - cb, 1 / (hJ + 1 / s2d), yc, var_d, self.nu_d, self.tau_d, s2d, lo, hi)
-        w = sigmoid(beta + delta[P] - d[J])
-        w = w * (1 - w)
+                    lam_d, s2d = self._hyper(d - cb, vd, yc, var_d, self.nu_d, self.tau_d, s2d, lo, hi)
+        _, w = lik()
         vb = 1 / (w.sum() + 1 / var_b) if self.learn_bench else var_b
         vdel = 1 / (np.bincount(P, w, nP) + 1 / s2u)
         vd = 1 / (np.bincount(J, w, nJ) + 1 / s2d) if self.learn_items else np.full(nJ, s2d)
         return {"beta": (float(beta), float(vb)),
                 "delta": {sk: (float(delta[k]), float(vdel[k])) for sk, k in pidx.items()},
                 "d": {ik: (float(d[k]), float(vd[k])) for ik, k in iidx.items()},
+                "vb": float(vb),
                 "hyp": {"lam_u": lam_u, "s2u": s2u, "lam_d": lam_d, "s2d": s2d, "cb": cb}}
 
     def score_batch(self, state, inputs):

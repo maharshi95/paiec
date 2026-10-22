@@ -204,7 +204,7 @@ def test_build_pairs_counts_source_items_and_keeps_variants_together(ds):
 
 def test_irt_h_hyper_contracts(ds):
     """irt_h with every hierarchical part on: batch = single, incremental = fresh, and off = irt."""
-    hyp = {"nu_u": 10.0, "nu_d": 10.0, "tau_u": 0.5, "tau_d": 0.5}
+    hyp = {"nu_u": 10.0, "nu_d": 10.0, "tau_u": 0.5, "tau_d": 0.5, "vi": True}
     pred = build_predictor({"name": "irt_h", "adapt_iters": 300, **hyp}).fit(ds.restrict(["bench0", "bench1"]))
     ev = _evidence(ds, 120)
     inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::97], ds.resp_i[::97])]

@@ -6,8 +6,8 @@ Deadline: **2026-10-30 AoE** (code + 4–8 page report on OpenReview, plus the c
 - Default model: `configs/irt.yaml` (`model.md`). Built ZIP: `dist/irt.zip`, which passes the organizers' validator. **Not yet submitted to Codabench.**
 - Best numbers (`results.md`):
   - ref6-LOBO: ALC 0.1772 vs the official baseline 0.2328;
-  - **dev-5fold: 0.2129 vs 0.2533;**
-  - **locked hold-out: 0.1966 vs 0.2437.**
+  - **ref6-seen split (default): dev 0.1844 vs 0.2269, hold-out 0.2113 vs 0.2689;**
+  - random-model panel: dev 0.2129, hold-out 0.1966.
   - MIRT and subject sharing: no measurable gain (dev Δ within ±0.0006).
 - Data: all 278 public benchmarks are local, with a train pool (207) and eval panel (57) (`benchmark-selection.md`).
 

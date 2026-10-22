@@ -128,3 +128,21 @@ Readings:
   - better identity resolution (canonical model names), which also helps the history prior;
   - a "shared-subject" eval slice to measure sharing where it can matter;
   - MIRT with LLM task-type loadings.
+
+## 2026-10-22: ref6-seen split (protocol: `configs/split_seen`, the current default; see validation.md)
+Eval benchmarks have models seen in the six reference benchmarks. Eval pairs are ref6-seen models only, and every pair has ≥80 distinct source items. Settings: 1 seed, ≤20 eligible subjects and ≤100 eval items per pair. Dev: 30 benchmarks, 344 pairs. Hold-out: 12 benchmarks, 148 pairs. Δ is paired vs `irt`; "better on" counts benchmarks where the variant beats irt. Report: `reports/split_seen/report.md`.
+
+| model | dev ALC | dev Δ vs irt | hold-out ALC | hold-out Δ vs irt | dev B0 / B1 / B31 |
+|---|---|---|---|---|---|
+| constant 0.5 | 0.2500 | +0.0630 ± 0.0073 (irt better on 28/30) | 0.2500 | +0.0387 ± 0.0083 (11/12) | 0.250 / 0.250 / 0.250 |
+| empirical_mean (official baseline) | 0.2269 | +0.0431 ± 0.0071 | 0.2689 | +0.0575 ± 0.0089 (12/12) | 0.250 / 0.337 / 0.169 |
+| beta_shrink | 0.1972 | +0.0123 ± 0.0042 | 0.2287 | +0.0173 ± 0.0049 | 0.280 / 0.216 / 0.169 |
+| **irt** | **0.1844** | 0 | **0.2113** | 0 | **0.240** / 0.198 / 0.157 |
+| irt + subject_sharing | 0.1842 | −0.0001 ± 0.0007 | 0.2130 | +0.0016 ± 0.0018 | 0.240 / 0.198 / 0.157 |
+| mirt K=2 / 4 / 8 / 16 (sharing) | 0.1844 / 0.1844 / 0.1853 / 0.1846 | +0.0001 to +0.0008 | 0.2120 / 0.2129 / 0.2124 / 0.2119 | +0.0006 to +0.0015 | ≈ irt |
+| mirt K=8, per pair | 0.1849 | +0.0003 ± 0.0012 | 0.2133 | +0.0020 ± 0.0024 | ≈ irt |
+
+Readings:
+- **With seen models, IRT's cold start finally beats a constant** (B0 0.240 vs 0.250). The canonical-identity history prior now finds these models' training records. IRT beats constant on 28/30 dev and 11/12 hold-out benchmarks, and the official baseline by 0.043 / 0.058.
+- **Sharing and MIRT still give no gain**, even though models now recur across eval benchmarks. The history prior already captures most cross-benchmark subject information. MIRT's text loadings do not transfer, and the K sweep is flat. Both stay off.
+- **The hold-out is harder than dev** (0.211 vs 0.184, with higher B31). It is dominated by benchmarks with wide item spread (hle, naturebench, bigfinancebench). That gap is the real generalisation estimate.

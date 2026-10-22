@@ -31,10 +31,14 @@ class IRTItem(IRT):
     name = "irt_item"
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
-                                           "kv_numeric", "eb_nu", "eb_eps_nu")
+                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim")
     rp_frac = 0.0
     rp_dim = 64
     rp_seed = 0
+    # degree-2 block: a tensor sketch of (z_i . z_j)^2 on the centred, normalised map features (a sharper,
+    # more local kernel that emphasises near-duplicates); its own variance fraction. Requires rp_frac > 0.
+    rp2_frac = 0.0
+    rp2_dim = 64
     kv_frac = 0.0
     dup_frac = 0.0
     kv_numeric = False      # also group on numeric kv values
@@ -45,6 +49,17 @@ class IRTItem(IRT):
     eb_eps_nu = 0.0         # same for the item-specific variance (pseudo-count in items); 0 = fixed
 
     # ---------------- item info (cached, pure) ----------------
+    def _poly(self, Z):
+        P = getattr(self, "_cache_P", None)
+        if P is None or P[0].shape != (Z.shape[-1], int(self.rp2_dim)):
+            rng = np.random.default_rng(int(self.rp_seed) + 1)
+            P = self._cache_P = (rng.standard_normal((Z.shape[-1], int(self.rp2_dim))),
+                                 rng.standard_normal((Z.shape[-1], int(self.rp2_dim))))
+        return (Z @ P[0]) * (Z @ P[1]) / np.sqrt(self.rp2_dim)
+
+    def _dense(self, zc):
+        return np.concatenate([zc, self._poly(zc)], -1) if self.rp2_frac > 0 else zc
+
     def online_features(self, items, X):
         """Feature vectors for the online content map (one row per item). Default: the IRT prior's own
         features X (ItemFeaturizer). Override or swap the featurizer here to use another representation."""
@@ -109,7 +124,7 @@ class IRTItem(IRT):
         return out
 
     def _var_eps(self):
-        return max(1.0 - self.rp_frac - self.kv_frac - self.dup_frac, 0.02) * self.var_d * self.var_scale
+        return max(1.0 - self.rp_frac - self.rp2_frac - self.kv_frac - self.dup_frac, 0.02) * self.var_d * self.var_scale
 
     # ---------------- adapt ----------------
     def extend(self, state, new):
@@ -150,7 +165,12 @@ class IRTItem(IRT):
             zbar = Z.mean(0)
             Zc = Z - zbar
             Zc /= np.maximum(np.linalg.norm(Zc, axis=1, keepdims=True), 1e-9)
+            k1 = Zc.shape[1]
+            Zc = self._dense(Zc)
             k = Zc.shape[1]
+            slices = [(slice(0, k1), tau2)]
+            if k > k1:
+                slices.append((slice(k1, k), self.rp2_frac * self.var_d * vs))
             w = np.zeros(k)
         # groups: one block per kv key (disjoint values within a key) + one content block
         blocks = {}
@@ -175,7 +195,7 @@ class IRTItem(IRT):
             sel = np.zeros(nG, bool)
             sel[gg] = True
             bsel.append(sel)
-        t2 = tau2
+        t2 = [tv for _, tv in slices] if use_rp else []
         # item-level map from obs to the items' group contributions: shared(j) = sum a * g
         beta, delta, eps = self.mu_beta, u.copy(), np.zeros(nJ)
         if warm:
@@ -189,8 +209,8 @@ class IRTItem(IRT):
                     eps[kk] = we[ik]
             if use_rp and warm.get("w") is not None and len(warm["w"]) == k:
                 w = warm["w"].copy()
-            if use_rp and warm.get("t2"):
-                t2 = warm["t2"]
+            if use_rp and warm.get("t2") and len(warm["t2"]) == len(t2):
+                t2 = list(warm["t2"])
             ws2 = warm.get("gs2", {})
             for bi, bk in enumerate(bkeys):
                 s2[bi] = ws2.get(bk, 1.0)
@@ -230,12 +250,14 @@ class IRTItem(IRT):
                 if use_rp:
                     mu = sigmoid(beta + delta[P] - d[J])
                     r, h = np.bincount(J, y - mu, nJ), np.bincount(J, mu * (1 - mu), nJ)
-                    H = (Zc * h[:, None]).T @ Zc + np.eye(k) / t2
-                    w += np.linalg.solve(H, -Zc.T @ r - w / t2)
+                    pv = np.concatenate([np.full(sl.stop - sl.start, tv) for (sl, _), tv in zip(slices, t2)])
+                    H = (Zc * h[:, None]).T @ Zc + np.diag(1 / pv)
+                    w += np.linalg.solve(H, -Zc.T @ r - w / pv)
                     if nu > 0:
                         he = h / (1 + h * var_e)
-                        Sm = np.linalg.inv((Zc * he[:, None]).T @ Zc + np.eye(k) / t2)
-                        t2 = (w @ w + np.trace(Sm) + nu * tau2) / (k + nu)
+                        Sm = np.linalg.inv((Zc * he[:, None]).T @ Zc + np.diag(1 / pv))
+                        t2 = [(w[sl] @ w[sl] + np.trace(Sm[sl, sl]) + nu * t0) / (sl.stop - sl.start + nu)
+                              for sl, t0 in slices]
                     sh = shared()
                     d = yh + sh + eps
                 for bi, (jj, gg, aa) in enumerate(blocks):
@@ -271,10 +293,10 @@ class IRTItem(IRT):
                "g": {t: (float(g[gi]), float(vg[gi])) for t, gi in gidx.items()},
                "gs2": {bk: float(s2[bi]) for bi, bk in enumerate(bkeys)}, "var_e": float(var_e)}
         if use_rp:
-            Hm = (Zc * heff[:, None]).T @ Zc + np.eye(k) / t2
-            Sw = np.linalg.inv(Hm)
+            pv = np.concatenate([np.full(sl.stop - sl.start, tv) for (sl, _), tv in zip(slices, t2)])
+            Sw = np.linalg.inv((Zc * heff[:, None]).T @ Zc + np.diag(1 / pv))
             shv += np.einsum("ij,jk,ik->i", Zc, Sw, Zc)
-            out.update(w=w, Sw=Sw, zbar=zbar, t2=float(t2))
+            out.update(w=w, Sw=Sw, zbar=zbar, t2=[float(t) for t in t2])
         else:
             out.update(w=None)
         vd = 1 / (h + 1 / (var_e + shv)) if self.learn_items else var_e + shv
@@ -293,11 +315,11 @@ class IRTItem(IRT):
         if self.rp_frac > 0:
             if st and st.get("w") is not None:
                 zc = inf[1] - st["zbar"]
-                zc = zc / max(np.linalg.norm(zc), 1e-9)
+                zc = self._dense(zc / max(np.linalg.norm(zc), 1e-9))
                 m += float(zc @ st["w"])
                 v += float(zc @ st["Sw"] @ zc)
             else:
-                v += self.rp_frac * self.var_d * self.var_scale
+                v += (self.rp_frac + self.rp2_frac) * self.var_d * self.var_scale
         return m, v
 
     def score_batch(self, state, inputs):

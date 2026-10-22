@@ -31,13 +31,16 @@ class IRTItem(IRT):
     name = "irt_item"
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
-                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim")
+                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var")
     rp_frac = 0.0
     rp_dim = 64
     rp_seed = 0
     # degree-2 block: a tensor sketch of (z_i . z_j)^2 on the centred, normalised map features (a sharper,
     # more local kernel that emphasises near-duplicates); its own variance fraction. Requires rp_frac > 0.
     rp2_frac = 0.0
+    # per-benchmark slope on the cross-benchmark prior: d += c_b * (yhat_i - mean yhat), c_b ~ N(0, this).
+    # Lets a benchmark learn to trust (c > 0), ignore (c = -1) or flip its content prior. Requires rp_frac > 0.
+    prior_slope_var = 0.0
     rp2_dim = 64
     kv_frac = 0.0
     dup_frac = 0.0
@@ -167,10 +170,16 @@ class IRTItem(IRT):
             Zc /= np.maximum(np.linalg.norm(Zc, axis=1, keepdims=True), 1e-9)
             k1 = Zc.shape[1]
             Zc = self._dense(Zc)
+            k2 = Zc.shape[1]
+            ybar = float(yh.mean())
+            if self.prior_slope_var > 0:
+                Zc = np.concatenate([Zc, (yh - ybar)[:, None]], 1)
             k = Zc.shape[1]
             slices = [(slice(0, k1), tau2)]
-            if k > k1:
-                slices.append((slice(k1, k), self.rp2_frac * self.var_d * vs))
+            if k2 > k1:
+                slices.append((slice(k1, k2), self.rp2_frac * self.var_d * vs))
+            if k > k2:
+                slices.append((slice(k2, k), float(self.prior_slope_var)))
             w = np.zeros(k)
         # groups: one block per kv key (disjoint values within a key) + one content block
         blocks = {}
@@ -296,7 +305,7 @@ class IRTItem(IRT):
             pv = np.concatenate([np.full(sl.stop - sl.start, tv) for (sl, _), tv in zip(slices, t2)])
             Sw = np.linalg.inv((Zc * heff[:, None]).T @ Zc + np.diag(1 / pv))
             shv += np.einsum("ij,jk,ik->i", Zc, Sw, Zc)
-            out.update(w=w, Sw=Sw, zbar=zbar, t2=[float(t) for t in t2])
+            out.update(w=w, Sw=Sw, zbar=zbar, ybar=ybar, t2=[float(t) for t in t2])
         else:
             out.update(w=None)
         vd = 1 / (h + 1 / (var_e + shv)) if self.learn_items else var_e + shv
@@ -316,6 +325,8 @@ class IRTItem(IRT):
             if st and st.get("w") is not None:
                 zc = inf[1] - st["zbar"]
                 zc = self._dense(zc / max(np.linalg.norm(zc), 1e-9))
+                if self.prior_slope_var > 0:
+                    zc = np.append(zc, inf[0] - st["ybar"])
                 m += float(zc @ st["w"])
                 v += float(zc @ st["Sw"] @ zc)
             else:

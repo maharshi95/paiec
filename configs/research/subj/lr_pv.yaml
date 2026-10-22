@@ -1,0 +1,3 @@
+name: subj__lr_pv
+base: configs/research/subj/lr.yaml
+predictor: {lr_feats: [u, think, size, size_na, date, date_na, "pv:openai", "pv:anthropic", "pv:google", "pv:meta"]}

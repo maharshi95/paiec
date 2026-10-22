@@ -1,0 +1,3 @@
+name: subj__lr_fixed
+base: configs/research/subj/lr.yaml
+predictor: {lr_adapt_w: false}

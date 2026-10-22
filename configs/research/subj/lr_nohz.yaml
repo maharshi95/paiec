@@ -1,0 +1,3 @@
+name: subj__lr_nohz
+base: configs/research/subj/lr.yaml
+predictor: {lr_feats: [u, think, size, size_na, date, date_na]}

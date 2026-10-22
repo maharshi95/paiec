@@ -5,10 +5,10 @@ Time left: ~9 days to the 30 Oct deadline (report + code). Prioritise a strong, 
 ## Validation protocol (local)
 1. `scripts/download_data.py` → `data/raw` (pin revision).
 2. Build records (`paiec.data.load.build_records`), keep binary benchmarks (+ decide binarisation for matharena/mmdocrag).
-3. **Leave-one-benchmark-out**: train on others, evaluate on held-out benchmark with `paiec.simulate.evaluate_pair` per (subject, benchmark) pair with ≥80 items, several seeds for the acq/eval split. Report mean ± over benchmarks; also per-budget Brier and ECE.
+3. **Leave-one-benchmark-out**: train on others, evaluate on held-out benchmark with `paiec.sim.replay` (hosted streaming protocol) per (subject, benchmark) pair with ≥80 items, several seeds for candidate order and trial draws. See docs/harness.md. Report mean ± over benchmarks; also per-budget Brier and ECE.
 4. Also leave-subject-out within benchmark (new model, known benchmark) as a secondary check — the test has *new benchmarks* but subjects are likely seen/new mix (unknown).
 
-## Model ladder (stubs in `src/paiec/models/`)
+## Model ladder (`src/paiec/predictors/`; status in docs/results.md)
 0. `empirical_mean` (reproduce baseline; sanity check for simulator, expect ALC ≈ >0.2).
 1. Smoothed empirical-Bayes: p = (k + a·μ_prior)/(n + a), prior μ from subject features (+ cross-benchmark mean for similar subjects), a tuned for ALC. Clip to [ε,1−ε].
 2. Subject-level prior: parse model family/size/"think"/date from `subject_features_extra`; regress benchmark-agnostic skill; item difficulty from text embeddings (REEval-style) → Rasch/2PL logit: `p = σ(θ_subject − b_item)` with θ updated from acquired labels (MAP, Gaussian prior).

@@ -1,5 +1,6 @@
 import math
-from paiec.metrics import BUDGETS, brier, brier_alc, ece, ALC_WEIGHTS
+
+from paiec.metrics import ALC_WEIGHTS, BUDGETS, brier, brier_alc, ece
 
 
 def test_weights_sum_to_one():

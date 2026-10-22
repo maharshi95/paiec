@@ -28,7 +28,7 @@ Finite float in [0,1] (native Python float preferred). NaN/inf/out-of-range/unca
     python tools/check_submission_zip.py my_submission.zip
     python tools/run_smoke_test.py my_submission/
 (Collaborator notes: the kit's smoke input omits `benchmark_id` at zero labels; kit HF templates bypass real model loading in local-smoke mode — neither proves hosted behaviour.)
-Our own: `make zip && make check` (stubs: `scripts/build_zip.py`, `scripts/check_zip.py` TODO once kit is available).
+Our own: `python scripts/build_submission.py --config <cfg>` builds `dist/<name>.zip` and `dist/<name>/`. `python scripts/check_zip.py dist/<name>.zip` imports `model.py` and makes two test calls; it is not a substitute for the kit tools.
 
 ## Failure codes
 10/11 invalid model.py · 12 invalid labeling.py · 40 prediction exception · 41 call timeout · 42 invalid probability · 50 total timeout. Hosted logs hide raw stdout/stderr → test locally; wrap risky code and fall back to a safe prior inside `predict`.

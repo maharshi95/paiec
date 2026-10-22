@@ -1,14 +1,20 @@
-"""Submission entry point (copied to ZIP root by scripts/build_zip.py).
+"""Codabench entry point. Built by scripts/build_submission.py; do not edit the copy in dist/.
 
-predict(input, labeled) -> float in [0,1].
-  input   = [subject: dict[str,str], item: dict[str,str]]   (see docs/submission-format.md)
-  labeled = [[[subject, item], label], ...]  label in {0,1}; empty at budget 0
-No network except approved inference APIs; no runtime model downloads; 8h total budget.
+predict(input, labeled) -> float in [0, 1]
+  input   = [subject: dict[str, str], item: dict[str, str]]
+  labeled = [[[subject, item], 0 | 1], ...]   (empty at budget 0)
 """
+import os
+import sys
+
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from paiec.runtime import load_predictor, safe_predict
+
+_PREDICTOR = load_predictor(_ROOT)
 
 
 def predict(input, labeled):
-    subject, item = input
-    bid = item.get("benchmark_id", "")
-    ys = [y for (s, it), y in labeled if s == subject and it.get("benchmark_id") == bid]
-    return float(sum(ys) / len(ys)) if ys else 0.5
+    return safe_predict(_PREDICTOR, input, labeled or [])

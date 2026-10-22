@@ -1,5 +1,9 @@
 """Minimal sanity check of a submission ZIP (not a substitute for the official starting-kit tools)."""
-import importlib.util, math, sys, tempfile, zipfile
+import importlib.util
+import math
+import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 

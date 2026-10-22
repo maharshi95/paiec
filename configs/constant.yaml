@@ -1,0 +1,4 @@
+name: constant
+base: configs/base.yaml
+predictor: {name: constant}
+acquisition: {name: accept_all}

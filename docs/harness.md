@@ -1,0 +1,54 @@
+# Using the research harness
+
+The design rationale is in [harness-plan.md](harness-plan.md). This page covers day-to-day use.
+
+## Run, sweep, compare
+```bash
+export PYTHONPATH=src
+python scripts/run.py --config configs/irt.yaml                         # 5 LOBO folds x 3 seeds
+python scripts/run.py --config configs/irt.yaml --set predictor.var_scale=1.5 --name irt_vs1.5
+python scripts/run.py --config configs/irt.yaml --set 'cv.seeds=[0]' --set 'cv.test_benchmarks=[multi_swebench]'  # quick
+python scripts/sweep.py --config configs/irt.yaml --grid predictor.var_scale=0.5,1,2 --grid acquisition.name=accept_all,information --jobs 6
+python scripts/leaderboard.py --folds             # every run under runs/, sorted by ALC
+python scripts/time_predict.py --config configs/irt.yaml   # hosted-style latency vs the 8 h limit
+python scripts/build_submission.py --config configs/irt.yaml   # dist/irt.zip
+```
+Quote `--set` values that contain brackets (`'cv.seeds=[0]'`), because zsh globs them.
+On the cluster or workstations, use `launch/run_experiment.slurm` (see the header of that file).
+
+Each run writes `runs/<name>/`:
+- `config.yaml`: the fully resolved config.
+- `metrics.json`: `alc` (mean over folds), `alc_pairs` (mean over pairs), `by_budget`, `ece_alc`, per-fold detail, timing, data revision and git sha.
+- `pairs.csv`: one row per (subject, benchmark, seed), with B0..B31, ECE, ALC and acquisition stats.
+
+Use `pairs.csv` for paired comparisons. Runs with the same `cv.split_seed` and `cv.seeds` see identical pools, candidate orders and revealed trials.
+
+## Config keys (defaults in `src/paiec/config.py`)
+| Key | Meaning |
+|---|---|
+| `data.benchmarks` | benchmarks loaded (train + test universe) |
+| `data.binarize` | `{mode: exclude}` drops non-binary benchmarks; `{mode: threshold, threshold: t}` uses y = grade ≥ t; `per_benchmark: {mmdocrag: 0.8, matharena: exclude}` |
+| `cv.test_benchmarks` | LOBO folds (default: all loaded) |
+| `cv.seeds`, `cv.split_seed` | candidate order and trial draws; fixed pools |
+| `cv.max_subjects_per_benchmark` | mimic platform subject sampling, or speed up |
+| `cv.max_eval_items_per_pair` | speed. Base config uses 200; set `null` for a final number |
+| `sim.evidence_scope` | `global` (all pairs' labels visible, the presumed hosted behaviour) or `pair` |
+| `predictor.*` | `name` plus any class attribute of that predictor |
+| `acquisition.*` | `name` plus any class attribute of that policy |
+
+## Extending
+- **New predictor.** Subclass `paiec.predictors.base.Predictor`:
+  - Implement `fit(train)`, `score(state, subject, item)` and, for speed, `score_batch`.
+  - Optionally override `adapt` / `extend` if the state is more than evidence counts.
+  - Every class attribute is a config parameter.
+  - Register it in `predictors/__init__.py`.
+  - Runtime methods may use only numpy + stdlib. State must serialise via `paiec.runtime` (numpy arrays, dicts, tuples, paiec objects).
+  - `tests/test_harness.py` automatically checks batch = single, incremental = fresh, and the serialisation round trip for every registered predictor.
+- **New acquisition policy.** Subclass `acquisition.Policy` and implement `decide(input, p, context, rate)`. The base class enforces the fill rule. Register it in `POLICIES`.
+- **New feature or field.** Add a named extractor to `features/item.py` or `features/subject.py` and list it in `ALL_FIELDS`. It can then be ablated with `--set predictor.item_fields=[text,kv]`.
+
+## Things the harness does to keep results honest
+- Benchmark ids in inputs are always anonymised. Training benchmarks never include the test fold.
+- Prior variances in `irt` come from cross-benchmark residuals, not in-sample fit.
+- Each checkpoint clears predictor caches, as the hosted worker restart would. `predict_batch` is used only for speed and is tested equal to `predict`.
+- Revealed outcomes are one recorded trial per accepted item. Evaluation scores every trial of every evaluation item.

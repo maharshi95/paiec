@@ -28,7 +28,7 @@ def main():
             try:
                 hf_hub_download(REPO, f"{slug}/formatted_tables/{t}.parquet", repo_type="dataset",
                                 revision=sha, local_dir=a.out)
-            except Exception as e:  # e.g. withheld benchmark / missing table
+            except Exception as e:  # noqa: BLE001 - e.g. withheld benchmark / missing table
                 print("skip", slug, t, type(e).__name__)
     with open(f"{a.out}/REVISION", "w") as f:
         f.write(sha + "\n")

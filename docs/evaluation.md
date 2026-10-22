@@ -19,7 +19,15 @@ shrinkage from prior (feature-based) to empirical (labels) is the core modeling 
 
 Diagnostic (not ranking): ECE, 10 equal-width bins, count-weighted.
 
+## Streaming acquisition protocol (from the starting kit, via the collaborator's replay; unverified by us)
+- Per pair, acquisition candidates arrive one at a time in random order. For each candidate the platform calls `predict` to get `prediction`, then `acquisition_function`. True reveals one recorded trial's outcome; False skips the item for good.
+- `context.labels_remaining` = 31 − acquired, regardless of the next checkpoint. `items_remaining` includes the current candidate.
+- The default policy (no `labeling.py`) is hash-uniform `u < labels_remaining / items_remaining`, i.e. selection sampling.
+- Checkpoints are nested. Every pair is advanced to budget n, then every evaluation input is scored. Workers restart at each checkpoint, so `predict` must rebuild from `labeled`.
+- `labeled` is presumably **global**, containing every pair's revealed labels, which lets the model learn the unseen benchmark's offset and item difficulties at test time. The harness supports both scopes (`sim.evidence_scope`).
+- Each repeated trial is a separate scored target, and identical visible inputs get one prediction.
+
 ## Caveats for local simulation
-`src/paiec/simulate.py` approximates the hosted evaluator. Unknown: exact random seed logic, how the acquisition function sequence is driven,
-which subjects are chosen, test benchmark distribution. Treat local numbers as relative, and validate against Codabench formative feedback.
-**Cold start by benchmark**: validate with leave-benchmark-out CV (never random row splits) — see `docs/experiment-plan.md`.
+`src/paiec/sim/replay.py` approximates the hosted evaluator. Unknown: the exact seeds and odd-size rounding, how trials are drawn, which subjects are chosen, the 1,000-pair formative subsampling (not simulated), and the test benchmark distribution.
+Treat local numbers as relative, and validate them against Codabench formative feedback.
+**Cold start by benchmark**: validate with leave-benchmark-out CV, never random row splits. See `docs/harness.md`.

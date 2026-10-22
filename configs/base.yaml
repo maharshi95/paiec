@@ -1,0 +1,11 @@
+# Shared defaults; other configs override these keys (see src/paiec/config.py DEFAULTS).
+data:
+  root: data/raw
+  benchmarks: [matharena, mmdocrag, multi_swebench, real_webagents, researchcodebench, swe_rebench]
+  binarize: {mode: threshold, threshold: 0.5}   # matharena/mmdocrag -> y = (grade >= 0.5)
+cv:
+  test_benchmarks: [matharena, mmdocrag, multi_swebench, real_webagents, researchcodebench]  # swe_rebench: 1 subject, train-only
+  seeds: [0, 1, 2]
+  max_eval_items_per_pair: 200    # speed; set null for full evaluation pools
+sim:
+  evidence_scope: global

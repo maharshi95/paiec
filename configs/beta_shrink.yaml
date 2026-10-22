@@ -1,0 +1,4 @@
+name: beta_shrink
+base: configs/base.yaml
+predictor: {name: beta_shrink}
+acquisition: {name: accept_all}

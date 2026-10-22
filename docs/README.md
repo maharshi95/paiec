@@ -15,6 +15,7 @@
 | `results.md` | **chronological results log** with paired Δs; the source of truth for numbers | after every experiment batch |
 | `item-difficulty-plan.md` | item-difficulty exploration: findings, experiments, LLM-feature spec | item or text-feature work |
 | `experiment-plan.md` | current status, priorities, deliverables checklist | priorities shift |
+| `research-loop.md` | automated research loop: roles, headline protocol, promotion rule, agent mechanics; `research/<slug>.md` per direction | the loop changes |
 | `open-questions.md` | unresolved questions and resolved ones with sources | something is learned |
 | `baselines.md`, `literature.md` | organizer baselines; related work | as needed |
 

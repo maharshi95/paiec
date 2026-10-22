@@ -9,7 +9,7 @@ DEFAULTS = {
     "data": {"root": "data/raw", "benchmarks": None, "binarize": {"mode": "exclude"},
              "cache_dir": "data/processed",
              "max_responses": None, "max_item_chars": None, "prefer_seen_from": None},
-    "cv": {"test_benchmarks": None, "train_benchmarks": None, "eval_seen_from": None, "seeds": [0, 1, 2], "split_seed": 0, "min_items": 80,
+    "cv": {"fit_cache": True, "test_benchmarks": None, "train_benchmarks": None, "eval_seen_from": None, "seeds": [0, 1, 2], "split_seed": 0, "min_items": 80,
            "max_subjects_per_benchmark": None, "max_eval_items_per_pair": None},
     "sim": {"evidence_scope": "global", "fresh_each_checkpoint": True},
     "predictor": {"name": "empirical_mean"},

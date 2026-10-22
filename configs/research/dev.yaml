@@ -1,0 +1,9 @@
+# Research-loop dev protocol (docs/research-loop.md): seen-dev split, 5 grouped folds, 3 seeds.
+# Variants: `base: configs/research/dev.yaml` + predictor/acquisition overrides. Compare with
+# scripts/compare.py against runs/R_champion_dev (same seeds -> paired).
+name: R_dev
+base: configs/split_seen/dev_base.yaml
+data:
+  cache_dir: /fs/clip-quiz/mgor/aims-neurips-2026/paiec/data/processed
+cv:
+  seeds: [0, 1, 2]

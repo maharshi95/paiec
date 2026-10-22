@@ -1,0 +1,5 @@
+# Milestone hold-out evaluation of the current champion (keep predictor/acquisition in sync with champion.yaml).
+name: R_champion_holdout
+base: configs/research/holdout.yaml
+predictor: {name: irt, item_target: absolute, beta_var_mult: 4.0}
+acquisition: {name: uncertainty, radius: 0.15}

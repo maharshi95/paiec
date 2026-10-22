@@ -14,6 +14,7 @@ import numpy as np
 import yaml
 
 from .acquisition import build_policy
+from .fitcache import fit_cached
 from .metrics import BUDGETS
 from .predictors import build_predictor
 from .sim.replay import build_pairs, replay
@@ -48,9 +49,11 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
         group = [fold] if isinstance(fold, str) else list(fold)
         group = [b for b in group if b in benches]
         test_b = group[0] if len(group) == 1 else "+".join(group)
-        train = ds.restrict([b for b in (cv.get("train_benchmarks") or benches) if b in benches and b not in group])
+        train_b = [b for b in (cv.get("train_benchmarks") or benches) if b in benches and b not in group]
+        train = ds.restrict(train_b)
         t0 = time.perf_counter()
-        pred = build_predictor(cfg["predictor"]).fit(train)
+        pred = fit_cached(build_predictor(cfg["predictor"]), train, train_b, cfg["data"], ds.revision,
+                          enabled=cv.get("fit_cache", True), verbose=verbose)
         timing["fit_s"] += time.perf_counter() - t0
         seed_alcs, seed_budget = [], []
         for seed in cv["seeds"]:

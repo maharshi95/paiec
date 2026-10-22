@@ -31,7 +31,7 @@ class IRTItem(IRT):
     name = "irt_item"
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
-                                           "kv_numeric")
+                                           "kv_numeric", "eb_nu")
     rp_frac = 0.0
     rp_dim = 64
     rp_seed = 0
@@ -39,6 +39,9 @@ class IRTItem(IRT):
     dup_frac = 0.0
     kv_numeric = False      # also group on numeric kv values
     item_iters = 0          # >0 overrides adapt_iters for this model
+    # online empirical Bayes: per-benchmark scales of the kv-key and content-map variances, learned by EM with
+    # a pseudo-count eb_nu (groups / map dims) toward the configured fraction. 0 = fixed fractions.
+    eb_nu = 0.0
 
     # ---------------- item info (cached, pure) ----------------
     def _proj(self):
@@ -141,17 +144,27 @@ class IRTItem(IRT):
         # groups: one block per kv key (disjoint values within a key) + one content block
         blocks = {}
         gidx = {}
+        bkeys = []
         for j, x in enumerate(info):
             for t, a in self._groups(x):
                 bk = t.split("=", 1)[0] if t.startswith("kv:") else "ct"
                 gi = gidx.setdefault(t, len(gidx))
-                blocks.setdefault(bk, ([], [], []))
+                if bk not in blocks:
+                    blocks[bk] = ([], [], [])
+                    bkeys.append(bk)
                 blocks[bk][0].append(j)
                 blocks[bk][1].append(gi)
                 blocks[bk][2].append(a)
         nG = len(gidx)
         g = np.zeros(nG)
-        blocks = [(np.array(jj), np.array(gg), np.array(aa)) for jj, gg, aa in blocks.values()]
+        blocks = [(np.array(jj), np.array(gg), np.array(aa)) for jj, gg, aa in (blocks[b] for b in bkeys)]
+        s2 = np.ones(len(blocks))
+        bsel = []
+        for jj, gg, aa in blocks:
+            sel = np.zeros(nG, bool)
+            sel[gg] = True
+            bsel.append(sel)
+        t2 = tau2
         # item-level map from obs to the items' group contributions: shared(j) = sum a * g
         beta, delta, eps = self.mu_beta, u.copy(), np.zeros(nJ)
         if warm:
@@ -165,6 +178,11 @@ class IRTItem(IRT):
                     eps[kk] = we[ik]
             if use_rp and warm.get("w") is not None and len(warm["w"]) == k:
                 w = warm["w"].copy()
+            if use_rp and warm.get("t2"):
+                t2 = warm["t2"]
+            ws2 = warm.get("gs2", {})
+            for bi, bk in enumerate(bkeys):
+                s2[bi] = ws2.get(bk, 1.0)
             wg = warm.get("g", {})
             for t, gi in gidx.items():
                 if t in wg:
@@ -180,6 +198,7 @@ class IRTItem(IRT):
 
         sh = shared()
         iters = int(self.item_iters) or self.adapt_iters
+        nu = float(self.eb_nu)
         for _ in range(iters):
             d = yh + sh + eps
             if self.learn_bench:
@@ -194,17 +213,24 @@ class IRTItem(IRT):
                 if use_rp:
                     mu = sigmoid(beta + delta[P] - d[J])
                     r, h = np.bincount(J, y - mu, nJ), np.bincount(J, mu * (1 - mu), nJ)
-                    H = (Zc * h[:, None]).T @ Zc + np.eye(k) / tau2
-                    w += np.linalg.solve(H, -Zc.T @ r - w / tau2)
+                    H = (Zc * h[:, None]).T @ Zc + np.eye(k) / t2
+                    w += np.linalg.solve(H, -Zc.T @ r - w / t2)
+                    if nu > 0:
+                        he = h / (1 + h * var_e)
+                        Sm = np.linalg.inv((Zc * he[:, None]).T @ Zc + np.eye(k) / t2)
+                        t2 = (w @ w + np.trace(Sm) + nu * tau2) / (k + nu)
                     sh = shared()
                     d = yh + sh + eps
-                for jj, gg, aa in blocks:
+                for bi, (jj, gg, aa) in enumerate(blocks):
                     mu = sigmoid(beta + delta[P] - d[J])
                     r, h = np.bincount(J, y - mu, nJ), np.bincount(J, mu * (1 - mu), nJ)
-                    step = (np.bincount(gg, -aa * r[jj], nG) - g) / (np.bincount(gg, aa * aa * h[jj], nG) + 1)
-                    sel = np.zeros(nG, bool)
-                    sel[gg] = True
+                    sel = bsel[bi]
+                    step = (np.bincount(gg, -aa * r[jj], nG) - g / s2[bi]) / (np.bincount(gg, aa * aa * h[jj], nG) + 1 / s2[bi])
                     g[sel] += step[sel]
+                    if nu > 0:
+                        he = h / (1 + h * var_e)
+                        vgb = 1 / (np.bincount(gg, aa * aa * he[jj], nG) + 1 / s2[bi])
+                        s2[bi] = (float((g[sel] ** 2 + vgb[sel]).sum()) + nu) / (sel.sum() + nu)
                     sh = shared()
                     d = yh + sh + eps
         d = yh + sh + eps
@@ -217,22 +243,21 @@ class IRTItem(IRT):
         vg = np.ones(nG)
         shv = np.zeros(nJ)
         heff = h / (1 + h * var_e)
-        for jj, gg, aa in blocks:
-            vg_b = 1 / (np.bincount(gg, aa * aa * heff[jj], nG) + 1)
-            sel = np.zeros(nG, bool)
-            sel[gg] = True
-            vg[sel] = vg_b[sel]
+        for bi, (jj, gg, aa) in enumerate(blocks):
+            vg_b = 1 / (np.bincount(gg, aa * aa * heff[jj], nG) + 1 / s2[bi])
+            vg[bsel[bi]] = vg_b[bsel[bi]]
         for jj, gg, aa in blocks:
             shv += np.bincount(jj, aa * aa * vg[gg], nJ)
         out = {"beta": (float(beta), float(vb)),
                "delta": {sk: (float(delta[kk]), float(vdel[kk])) for sk, kk in pidx.items()},
                "eps": {ik: float(eps[kk]) for ik, kk in iidx.items()},
-               "g": {t: (float(g[gi]), float(vg[gi])) for t, gi in gidx.items()}}
+               "g": {t: (float(g[gi]), float(vg[gi])) for t, gi in gidx.items()},
+               "gs2": {bk: float(s2[bi]) for bi, bk in enumerate(bkeys)}}
         if use_rp:
-            Hm = (Zc * heff[:, None]).T @ Zc + np.eye(k) / tau2
+            Hm = (Zc * heff[:, None]).T @ Zc + np.eye(k) / t2
             Sw = np.linalg.inv(Hm)
             shv += np.einsum("ij,jk,ik->i", Zc, Sw, Zc)
-            out.update(w=w, Sw=Sw, zbar=zbar)
+            out.update(w=w, Sw=Sw, zbar=zbar, t2=float(t2))
         else:
             out.update(w=None)
         vd = 1 / (h + 1 / (var_e + shv)) if self.learn_items else var_e + shv
@@ -244,7 +269,8 @@ class IRTItem(IRT):
         """(mean, var) of an unlabeled item's difficulty given a benchmark state (or None)."""
         m, v = inf[0], self._var_eps()
         for t, a in self._groups(inf):
-            gm, gv = st["g"].get(t, (0.0, 1.0)) if st else (0.0, 1.0)
+            prior = (0.0, st["gs2"].get(t.split("=", 1)[0] if t.startswith("kv:") else "ct", 1.0)) if st else (0.0, 1.0)
+            gm, gv = st["g"].get(t, prior) if st else prior
             m += a * gm
             v += a * a * gv
         if self.rp_frac > 0:

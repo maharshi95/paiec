@@ -11,6 +11,11 @@ Deadline: **2026-10-30 AoE** (code + 4–8 page report on OpenReview, plus the c
   - MIRT and subject sharing: no measurable gain (dev Δ within ±0.0006).
 - Data: all 278 public benchmarks are local, with a train pool (207) and eval panel (57) (`benchmark-selection.md`).
 
+## Research loop (started 2026-10-22; `research-loop.md`)
+- Headline protocol: `configs/research/dev.yaml` (seen-dev, 3 seeds); champion `configs/research/champion.yaml`, control `runs/R_champion_dev`.
+- Round 1 directions (worktrees `../paiec-wt/<slug>`, branches `exp/<slug>`): diag, hier, subj, item, acq, meta.
+- After each round: merge winners, measure the stacked combination, promote, check the hold-out, and launch the next round.
+
 ## Priorities
 1. **Diagnose the 14 dev benchmarks where IRT is worse than a constant 0.5** (offset/calibration). Improve model-identity resolution (it helps history priors, and would let sharing and MIRT matter).
 2. **Submit to Codabench** with the pool-trained IRT, to get formative feedback and calibrate local-vs-hosted numbers.

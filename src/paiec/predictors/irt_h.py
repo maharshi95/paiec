@@ -36,8 +36,16 @@ class IRTH(IRT):
     #   kappa = sqrt(1 + pi v / 8), v = summed current posterior variances of the observation's terms.
     #   The joint MAP attenuates the offset/abilities when items carry large, weakly identified variances.
     vi = False
+    # runtime multipliers of the individual prior variances (on top of var_scale), for adapt and score
+    b_mult = 1.0
+    u_mult = 1.0
+    d_mult = 1.0
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("nu_u", "nu_d", "tau_u", "tau_d", "em_start", "min_var_mult",
-                                           "max_var_mult", "score_var_mult", "vi")
+                                           "max_var_mult", "score_var_mult", "vi", "b_mult", "u_mult", "d_mult")
+
+    def _prior_vars(self):
+        vs = self.var_scale
+        return self.var_beta * vs * self.b_mult, self.var_u * vs * self.u_mult, self.var_d * vs * self.d_mult
 
     def extend(self, state, new):
         if self.subject_sharing:
@@ -62,8 +70,7 @@ class IRTH(IRT):
         return lam, s2
 
     def _adapt_h(self, obs, warm=None):
-        vs = self.var_scale
-        var_b, var_u, var_d = self.var_beta * vs, self.var_u * vs, self.var_d * vs
+        var_b, var_u, var_d = self._prior_vars()
         pidx, iidx, subj, items = {}, {}, [], []
         for sk, ik, _, s, i in obs:
             if sk not in pidx:
@@ -144,7 +151,7 @@ class IRTH(IRT):
     def score_batch(self, state, inputs):
         if self.subject_sharing:
             return super().score_batch(state, inputs)
-        vs = self.var_scale
+        var_b, var_u, var_d = self._prior_vars()
         yh = self.item_priors([i for _, i in inputs])
         m, v = np.empty(len(inputs)), np.empty(len(inputs))
         fits = state["fits"]
@@ -160,9 +167,9 @@ class IRTH(IRT):
                 if im is None:
                     im, iv = h["cb"] + h["lam_d"] * (yh[k] - h["cb"]), h["s2d"]
             else:
-                bm, bv = self.mu_beta, self.var_beta * vs
-                dm, dv = self.subject_prior(s), self.var_u * vs
-                im, iv = yh[k], self.var_d * vs
+                bm, bv = self.mu_beta, var_b
+                dm, dv = self.subject_prior(s), var_u
+                im, iv = yh[k], var_d
             m[k], v[k] = bm + dm - im, bv + dv + iv
         v = v * self.score_var_mult
         return sigmoid(m / np.sqrt(1 + np.pi * v / 8)) if self.marginalize else sigmoid(m)

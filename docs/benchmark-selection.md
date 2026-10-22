@@ -32,7 +32,10 @@ Quality problems found:
 
 The 29 primary domains include agents, medicine, safety, math, SWE, law, multilingual and vision.
 
-## Experiment: which training benchmarks help? (running, Slurm jobs 7956429–31)
+## Experiment: which training benchmarks help? (done 2026-10-22; numbers in results.md)
+Result: pool < panel-only < ref6 in ALC (0.2076 / 0.2091 / 0.2157). Pool vs ref6 is −0.0081 ± 0.0023, and pool vs panel is not significant. Use the pool as the default training set.
+
+Setup:
 All three variants are evaluated on the same panel folds with the default IRT config, 1 seed, ≤20 subjects and ≤100 eval items per pair:
 - `sel_ref6`: train only on the six original benchmarks;
 - `sel_panel`: train on the other panel folds;

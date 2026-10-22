@@ -21,7 +21,7 @@ Items marked (unverified) are their inference, not something the organizers stat
 | Hosted limit: 8 h total. No pip installs by default. Python 3.13 + torch/transformers stack (collaborator's notes, unverified). | Runtime code is stdlib + numpy only. Item featurization must be cheap or precomputed per unique item. |
 
 Data facts (revision `54074453`):
-- 6 public benchmarks: 4 binary, matharena (mixed), mmdocrag (fraction).
+- The 6 reference benchmarks (4 binary, matharena mixed, mmdocrag fraction) were all we used at first. The repo actually holds 278 public benchmarks (`dataset.md`).
 - 34 models appear in more than one benchmark by `normalized_name`, so a cross-benchmark subject prior is possible.
 - `interactors` is always empty. `test_condition` appears only in mmdocrag.
 - researchcodebench item text has a median of about 96K characters, so truncate.
@@ -86,10 +86,7 @@ submission_template/model.py, labeling.py  -- thin shims that load state.pkl + t
   - Precompute training-side artifacts.
   - Featurize each unique item once per process.
 
-### Findings so far (docs/results.md)
-- Under global evidence, uncertainty sampling (r = 0.15) beats accept_all by 0.004 ALC (paired, all folds). The information rule is similar. It is the IRT default now.
-- Global versus pair evidence is worth 0.03 ALC, far more than any acquisition rule. Verify the hosted behaviour first.
-- Next on acquisition: tune r per budget phase; use expected reduction in evaluation-pool Brier (needs item-prior variance); and, under global evidence, favour items that other subjects have labeled or will be scored on.
+Findings are logged in `results.md` (acquisition summary: uncertainty r ≈ 0.1–0.15 is best; acquisition gains saturate at about 0.004 ALC).
 
 ## 5. Order of work
 1. Dataset + features + sim/replay + metrics + experiment runner + leaderboard. Tests: replay invariants, `predict_batch` = `predict`, acquisition fill rule.

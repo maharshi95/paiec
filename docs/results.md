@@ -74,3 +74,30 @@ Readings:
 - **Best B0 prior:** let item text predict absolute difficulty (offset included), and widen the offset prior (×4–16). B0 falls from 0.267 to 0.250–0.255, and B1 improves slightly because the offset is learned faster from the first labels. That is still far from the oracle-offset 0.204. Closing the gap needs better benchmark-level signals (see the subagent plan in docs/item-difficulty-plan.md).
 - Balancing benchmarks in the item ridge removes the gain. Large benchmarks seem to carry the useful cross-benchmark signal, but with 5 folds this is weak evidence.
 - **Acquisition:** uncertainty sampling with r ≈ 0.1–0.15 remains best. The model-aware `quantile` rule and rate-adaptive `information` rules are slightly worse. A likely reason: rejecting early is free while the pool is large, and a fixed tight band picks more informative items than a rule calibrated to fill exactly. Acquisition gains look saturated at about 0.004 ALC over random. The prior and features are the bigger levers.
+
+## 2026-10-22: item-difficulty exploration (subagent; details in item-difficulty-plan.md)
+Protocol: ref6-LOBO. Paired against the default config (ALC 0.1772).
+| variant | Δ ALC |
+|---|---|
+| no item features | +0.0055 ± 0.0013 (so the BOW prior is worth about 0.005) |
+| BOW + Qwen3-8B difficulty rating | −0.0003 ± 0.0007 (not significant) |
+| LLM rating alone / hand-crafted (z per benchmark) / MiniLM ridge | +0.0041 / +0.0042 / +0.0049–0.0123 |
+| BOW item-variance ×0.4 / 0.7 / 1.5 | +0.0035 / +0.0011 / +0.0007 |
+
+LOBO difficulty prediction (Spearman, held-out benchmark):
+- every text, embedding or hand-crafted model: −0.06 to 0.10;
+- Qwen3-8B zero-shot rating: 0.19;
+- Qwen3-32B: 0.33 on a 600-item pilot.
+
+## 2026-10-22: training-set selection on the 57-benchmark panel (protocol: panel-5fold, see validation.md)
+Default IRT config, 1 seed, ≤20 subjects and ≤100 eval items per pair, 921 pair evaluations. Runs: `sel_pool`, `sel_panel`, `sel_ref6`.
+| training set | ALC | B0 | B1 | B31 | paired Δ |
+|---|---|---|---|---|---|
+| **pool** (207 benchmarks, capped 100K responses each) | **0.2076** | 0.258 | 0.220 | 0.180 | vs ref6: −0.0081 ± 0.0023, better on 37/57 benchmarks |
+| panel only (other 4 folds, ~46 benchmarks) | 0.2091 | 0.253 | 0.222 | 0.181 | vs ref6: −0.0066 ± 0.0021; pool vs panel: −0.0015 ± 0.0016 (n.s.) |
+| ref6 only | 0.2157 | 0.260 | 0.224 | 0.198 | |
+
+Readings:
+- **More, and more diverse, training benchmarks help.** The gain is mostly at high budgets (B31 0.198 → 0.180), i.e. better item and subject priors and variance estimates. Domain gains vs ref6 are largest for education, language understanding, multilingual, law and safety (−0.02 to −0.04). A few domains get slightly worse (cybersecurity, navigation, long-term memory, preference: +0.01 to +0.02), which suggests similarity weighting could help.
+- **Panel ALC (~0.21) is not comparable to ref6-LOBO (~0.177).** The benchmark mixes differ. Compare only within a protocol.
+- Still to run on the panel: the constant and empirical-mean baselines, for context.

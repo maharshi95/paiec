@@ -32,7 +32,8 @@ python scripts/build_submission.py --config configs/irt.yaml   # -> dist/irt.zip
     data/ runs/ dist/ logs/   gitignored
 
 ## Docs
-- [docs/harness.md](docs/harness.md): how to run, compare and extend (start here)
+- [docs/README.md](docs/README.md): docs index (start here)
+- [docs/harness.md](docs/harness.md): how to run, compare and extend
 - [docs/harness-plan.md](docs/harness-plan.md): design, protocol facts, model ladder, acquisition and runtime strategy
 - [docs/results.md](docs/results.md): results log
 - [docs/competition.md](docs/competition.md), [docs/evaluation.md](docs/evaluation.md), [docs/submission-format.md](docs/submission-format.md)

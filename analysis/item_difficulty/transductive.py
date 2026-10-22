@@ -13,10 +13,9 @@ import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import Ridge
-
 from common import OUT, TEST_BENCHES, targets
 from features import _kv
+from sklearn.linear_model import Ridge
 
 FRACS = (0.02, 0.05, 0.2)
 SIGMAS = (0.0, 1.5, 3.0)

@@ -7,7 +7,6 @@ Writes <out>/inventory.csv, used by scripts/download_data.py --select to pick be
     python scripts/mdb_inventory.py --root /fs/clip-scratch/mgor/measurement-db
 """
 import argparse
-import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 

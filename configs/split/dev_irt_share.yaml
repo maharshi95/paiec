@@ -1,0 +1,7 @@
+name: dev_irt_share
+base: configs/split/dev_base.yaml
+predictor:
+  name: irt
+  item_target: absolute
+  beta_var_mult: 4.0
+  subject_sharing: true

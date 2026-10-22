@@ -1,0 +1,2 @@
+name: dev_irt
+base: configs/split/dev_base.yaml

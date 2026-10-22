@@ -1,0 +1,6 @@
+name: dev_empirical_mean
+base: configs/split/dev_base.yaml
+predictor:
+  name: empirical_mean
+acquisition:
+  name: official_random

@@ -7,10 +7,9 @@ import re
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
-
 from common import OUT, targets
 from features import _kv, build
+from scipy.stats import spearmanr
 
 MIN_SUBJ = 5
 

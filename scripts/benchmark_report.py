@@ -28,8 +28,8 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from paiec.data.dataset import _binarize, parse_scale  # noqa: E402
-from paiec.features.subject import subject_identity  # noqa: E402
+from paiec.data.dataset import _binarize, parse_scale
+from paiec.features.subject import subject_identity
 
 BINARIZE = {"mode": "threshold", "threshold": 0.5}
 

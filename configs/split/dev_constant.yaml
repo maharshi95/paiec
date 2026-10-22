@@ -1,0 +1,6 @@
+name: dev_constant
+base: configs/split/dev_base.yaml
+predictor:
+  name: constant
+acquisition:
+  name: official_random

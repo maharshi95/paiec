@@ -69,6 +69,11 @@ class IRT(Predictor):
     balance_benchmarks = False   # weight items 1/n_items(benchmark) in the item ridge
     cv_groups = 10               # cross-benchmark residuals: benchmarks hashed into <= this many folds
     max_ridge_items = 200_000    # item-ridge fit on a seeded sample (memory); Rasch uses all items
+    # subject_sharing: logit = beta_b + g_s + delta_{s,b} - d_i with a *global* subject ability g_s (keyed by
+    #   model identity, shared across benchmarks) and a pair residual delta ~ N(0, var_pair). Adaptation is
+    #   joint over all benchmarks, so a subject's labels on other test benchmarks inform this one.
+    #   False: per-benchmark adaptation with delta_{s,b} ~ N(u(s), var_u) (the original model).
+    subject_sharing = False
 
     # ---------------- fit ----------------
     def fit(self, train):
@@ -94,6 +99,9 @@ class IRT(Predictor):
         beta = np.array([theta[pair_b == b].mean() for b in benches])
         self.mu_beta = float(beta.mean())
         self.var_beta = max(float(beta.var()) if len(beta) > 1 else 1.0, 0.25)
+
+        fitdata = {"pk": pk, "P": P, "J": J, "ysum": ysum, "n": n, "items_used": items_used, "theta": theta.copy(),
+                   "d": d.copy(), "pair_s": pair_s, "pair_b": pair_b}
 
         # item difficulty prior (ridge on a bounded, seeded sample of items)
         if len(items_used) > self.max_ridge_items:
@@ -128,7 +136,38 @@ class IRT(Predictor):
             self.var_u = max(float(np.mean(np.concatenate(resid) ** 2)), self.var_floor)
         else:
             self.var_u = max(float(np.mean((r - np.array([full(Z[k], ident[k]) for k in range(len(r))])) ** 2)) * 1.5, self.var_floor)
+        # split pair-ability variance into global-subject and benchmark-specific parts
+        acc = {}
+        for k, v in zip(ident, r):
+            acc.setdefault(k, []).append(v)
+        dev = [(np.asarray(v) - np.mean(v), len(v)) for v in acc.values() if len(v) > 1]
+        if dev:
+            ss = sum(float((x ** 2).sum()) for x, _ in dev)
+            dof = sum(c - 1 for _, c in dev)
+            self.var_pair = max(ss / dof, self.var_floor)
+        else:
+            self.var_pair = self.var_u / 2
+        self.var_g = max(self.var_u - self.var_pair, self.var_floor)
+        self._fit_extra(train, fitdata)
         return self
+
+    # ---------------- extension hooks (used by MIRT; no-ops here) ----------------
+    def _fit_extra(self, train, fitdata):
+        """Called at the end of fit with the full Rasch solution (cells P, J, ysum, n, theta, d, ...)."""
+
+    def _bench_ctx(self, subj, items, P, J, warm):
+        return None
+
+    def _bench_step(self, ctx, base_eta, y):
+        """Update extra per-benchmark parameters given the main-effect logits; return extra logits."""
+        return 0.0
+
+    def _bench_out(self, ctx, pidx):
+        return {}
+
+    def _score_extra(self, st, subject, item):
+        """(extra logit mean, extra variance) for one input."""
+        return 0.0, 0.0
 
     def _fold_of(self, bench):
         """Map benchmark indices to <= cv_groups folds (each benchmark stays whole)."""
@@ -206,13 +245,87 @@ class IRT(Predictor):
 
     # ---------------- adapt / score ----------------
     def adapt(self, labeled):
-        state = {"ev": Evidence(), "fits": {}}
+        state = {"ev": Evidence(), "fits": {}, "joint": None}
         return self.extend(state, labeled)
 
     def extend(self, state, new):
-        for b in state["ev"].add(new):
+        touched = state["ev"].add(new)
+        if self.subject_sharing:
+            if touched:
+                state["joint"] = self._fit_joint(state["ev"], state["joint"])
+            return state
+        for b in touched:
             state["fits"][b] = self._fit_bench(state["ev"].by_bench[b], state["fits"].get(b))
         return state
+
+    def group_key(self, subject):
+        """Key of the subject-level parameters (global ability g, MIRT skills)."""
+        return subject_identity(subject) if self.subject_sharing else subject_key(subject)
+
+    def _fit_joint(self, ev, warm=None):
+        """MAP over all benchmarks at once: beta_b, g (per identity), delta (per pair), d (per item)."""
+        vs = self.var_scale
+        var_b, var_g, var_p, var_d = self.var_beta * vs, self.var_g * vs, self.var_pair * vs, self.var_d * vs
+        bidx, gidx, pidx, iidx = {}, {}, {}, {}
+        gsub, items, B, G, P, J, y = [], [], [], [], [], [], []
+        for b, obs in ev.by_bench.items():
+            bi = bidx.setdefault(b, len(bidx))
+            for sk, ik, yy, s, i in obs:
+                gk = self.group_key(s)
+                if gk not in gidx:
+                    gidx[gk] = len(gsub)
+                    gsub.append(s)
+                if ik not in iidx:
+                    iidx[ik] = len(items)
+                    items.append(i)
+                B.append(bi)
+                G.append(gidx[gk])
+                P.append(pidx.setdefault((b, sk), len(pidx)))
+                J.append(iidx[ik])
+                y.append(yy)
+        B, G, P, J, y = map(np.asarray, (B, G, P, J, y))
+        nB, nG, nP, nJ = len(bidx), len(gsub), len(pidx), len(items)
+        u = np.array([self.subject_prior(s) for s in gsub])
+        yh = self.item_priors(items)
+        beta, g, delta, d = np.full(nB, self.mu_beta), u.copy(), np.zeros(nP), yh.copy()
+        if warm:
+            for b, k in bidx.items():
+                beta[k] = warm["beta"].get(b, (beta[k],))[0]
+            for gk, k in gidx.items():
+                g[k] = warm["g"].get(gk, (g[k],))[0]
+            for pk, k in pidx.items():
+                delta[k] = warm["delta"].get(pk, (0.0,))[0]
+            for ik, k in iidx.items():
+                d[k] = warm["d"].get(ik, (d[k],))[0]
+        ctx = self._bench_ctx(gsub, items, G, J, warm)
+        extra = 0.0
+
+        def step(x, idx, n, prior_mean, prior_var, sign=1.0):
+            mu = sigmoid(beta[B] + g[G] + delta[P] - d[J] + extra)
+            x += (sign * np.bincount(idx, y - mu, n) - (x - prior_mean) / prior_var) / (np.bincount(idx, mu * (1 - mu), n) + 1 / prior_var)
+
+        for _ in range(self.adapt_iters):
+            if self.learn_bench:
+                step(beta, B, nB, self.mu_beta, var_b)
+            step(g, G, nG, u, var_g)
+            step(delta, P, nP, 0.0, var_p)
+            if self.learn_items:
+                step(d, J, nJ, yh, var_d, sign=-1.0)
+            if ctx is not None:
+                extra = self._bench_step(ctx, beta[B] + g[G] + delta[P] - d[J], y)
+        w = sigmoid(beta[B] + g[G] + delta[P] - d[J] + extra)
+        w = w * (1 - w)
+        post = lambda idx, n, pv: 1 / (np.bincount(idx, w, n) + 1 / pv)
+        vb = post(B, nB, var_b) if self.learn_bench else np.full(nB, var_b)
+        vg, vp = post(G, nG, var_g), post(P, nP, var_p)
+        vd = post(J, nJ, var_d) if self.learn_items else np.full(nJ, var_d)
+        out = {"beta": {b: (float(beta[k]), float(vb[k])) for b, k in bidx.items()},
+               "g": {gk: (float(g[k]), float(vg[k])) for gk, k in gidx.items()},
+               "delta": {pk: (float(delta[k]), float(vp[k])) for pk, k in pidx.items()},
+               "d": {ik: (float(d[k]), float(vd[k])) for ik, k in iidx.items()}}
+        if ctx is not None:
+            out.update(self._bench_out(ctx, gidx))
+        return out
 
     def _fit_bench(self, obs, warm=None):
         """MAP of beta, delta (seen pairs), d (seen items) for one benchmark's evidence."""
@@ -233,6 +346,8 @@ class IRT(Predictor):
         yh = self.item_priors(items)
         nP, nJ = len(u), len(yh)
         beta, delta, d = self.mu_beta, u.copy(), yh.copy()
+        ctx = self._bench_ctx(subj, items, P, J, warm)
+        extra = 0.0
         if warm:  # warm start from the previous (smaller) evidence's solution
             beta = warm["beta"][0]
             for sk, k in pidx.items():
@@ -243,23 +358,28 @@ class IRT(Predictor):
                     d[k] = warm["d"][ik][0]
         for _ in range(self.adapt_iters):
             if self.learn_bench:
-                mu = sigmoid(beta + delta[P] - d[J])
+                mu = sigmoid(beta + delta[P] - d[J] + extra)
                 beta += ((y - mu).sum() - (beta - self.mu_beta) / var_b) / ((mu * (1 - mu)).sum() + 1 / var_b)
-            mu = sigmoid(beta + delta[P] - d[J])
+            mu = sigmoid(beta + delta[P] - d[J] + extra)
             delta += (np.bincount(P, y - mu, nP) - (delta - u) / var_u) / (np.bincount(P, mu * (1 - mu), nP) + 1 / var_u)
             if self.learn_items:
-                mu = sigmoid(beta + delta[P] - d[J])
+                mu = sigmoid(beta + delta[P] - d[J] + extra)
                 d += (-np.bincount(J, y - mu, nJ) - (d - yh) / var_d) / (np.bincount(J, mu * (1 - mu), nJ) + 1 / var_d)
-        w = sigmoid(beta + delta[P] - d[J])
+            if ctx is not None:
+                extra = self._bench_step(ctx, beta + delta[P] - d[J], y)
+        w = sigmoid(beta + delta[P] - d[J] + extra)
         w = w * (1 - w)
         vb = 1 / (w.sum() + 1 / var_b) if self.learn_bench else var_b
         vdel = 1 / (np.bincount(P, w, nP) + 1 / var_u)
         vd = 1 / (np.bincount(J, w, nJ) + 1 / var_d) if self.learn_items else np.full(nJ, var_d)
         return {"beta": (float(beta), float(vb)),
                 "delta": {sk: (float(delta[k]), float(vdel[k])) for sk, k in pidx.items()},
-                "d": {ik: (float(d[k]), float(vd[k])) for ik, k in iidx.items()}}
+                "d": {ik: (float(d[k]), float(vd[k])) for ik, k in iidx.items()},
+                **(self._bench_out(ctx, pidx) if ctx is not None else {})}
 
     def score_batch(self, state, inputs):
+        if self.subject_sharing:
+            return self._score_joint(state, inputs)
         vs = self.var_scale
         yh = self.item_priors([i for _, i in inputs])
         m, v = np.empty(len(inputs)), np.empty(len(inputs))
@@ -273,7 +393,25 @@ class IRT(Predictor):
             im, iv = st["d"].get(item_key(i), (None, None)) if st else (None, None)
             if im is None:
                 im, iv = yh[k], self.var_d * vs
-            m[k], v[k] = bm + dm - im, bv + dv + iv
+            em, evar = self._score_extra(st, s, i)
+            m[k], v[k] = bm + dm - im + em, bv + dv + iv + evar
+        return sigmoid(m / np.sqrt(1 + np.pi * v / 8)) if self.marginalize else sigmoid(m)
+
+    def _score_joint(self, state, inputs):
+        vs = self.var_scale
+        yh = self.item_priors([i for _, i in inputs])
+        jt = state["joint"] or {"beta": {}, "g": {}, "delta": {}, "d": {}}
+        m, v = np.empty(len(inputs)), np.empty(len(inputs))
+        for k, (s, i) in enumerate(inputs):
+            b = i.get("benchmark_id", "")
+            bm, bv = jt["beta"].get(b, (self.mu_beta, self.var_beta * vs))
+            gm, gv = jt["g"].get(self.group_key(s), (None, None))
+            if gm is None:
+                gm, gv = self.subject_prior(s), self.var_g * vs
+            pm, pv = jt["delta"].get((b, subject_key(s)), (0.0, self.var_pair * vs))
+            im, iv = jt["d"].get(item_key(i), (yh[k], self.var_d * vs))
+            em, evar = self._score_extra(jt, s, i)
+            m[k], v[k] = bm + gm + pm - im + em, bv + gv + pv + iv + evar
         return sigmoid(m / np.sqrt(1 + np.pi * v / 8)) if self.marginalize else sigmoid(m)
 
     def score(self, state, subject, item):

@@ -1,0 +1,6 @@
+name: holdout_empirical_mean
+base: configs/split/holdout_base.yaml
+predictor:
+  name: empirical_mean
+acquisition:
+  name: official_random

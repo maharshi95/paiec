@@ -1,0 +1,8 @@
+name: holdout_mirt_k16
+base: configs/split/holdout_base.yaml
+predictor:
+  name: mirt
+  item_target: absolute
+  beta_var_mult: 4.0
+  ndim: 16
+  subject_sharing: true

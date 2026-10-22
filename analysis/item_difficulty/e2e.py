@@ -13,13 +13,12 @@ import hashlib
 import sys
 
 import numpy as np
-
 from common import OUT, ROOT
 
-from paiec.config import load_config  # noqa: E402  (common puts src on sys.path)
-from paiec.experiment import run_experiment  # noqa: E402
-from paiec.predictors import PREDICTORS  # noqa: E402
-from paiec.predictors import irt as irtmod  # noqa: E402
+from paiec.config import load_config
+from paiec.experiment import run_experiment
+from paiec.predictors import PREDICTORS
+from paiec.predictors import irt as irtmod
 
 TABLES = OUT / "tables"
 

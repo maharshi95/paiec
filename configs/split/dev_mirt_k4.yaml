@@ -1,0 +1,8 @@
+name: dev_mirt_k4
+base: configs/split/dev_base.yaml
+predictor:
+  name: mirt
+  item_target: absolute
+  beta_var_mult: 4.0
+  ndim: 4
+  subject_sharing: true

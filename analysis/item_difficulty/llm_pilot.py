@@ -99,8 +99,8 @@ def pd_qcut(v, q):
 
 
 def parse(text):
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
-    m = re.search(r"\{.*\}", text, re.S)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    m = re.search(r"\{.*\}", text, re.DOTALL)
     if not m:
         return None
     s = re.sub(r"//[^\n]*", "", m.group(0))
@@ -238,7 +238,6 @@ def table(tag="Qwen3-8B_input_all"):
     """All-item LLM features -> llm/feat_<tag>.npy aligned with targets() rows (per-benchmark z-scored, transductive)
     and tables/llm_<tag>.npz for e2e.py."""
     import numpy as np
-    import pandas as pd
     sys.path.insert(0, str(Path(__file__).parent))
     from common import OUT, targets
     from e2e import ikey

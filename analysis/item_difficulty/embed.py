@@ -8,7 +8,6 @@ import time
 
 import numpy as np
 import torch
-
 from common import OUT, targets
 from views import chunks, focus_views, head, headtail, tail
 

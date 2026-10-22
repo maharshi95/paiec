@@ -16,18 +16,17 @@ import time
 
 import numpy as np
 import pandas as pd
+from common import OUT, TEST_BENCHES, targets
+from features import build as build_feats
 from scipy import sparse
 from scipy.stats import pearsonr, spearmanr
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import GroupKFold
-
-from common import OUT, TEST_BENCHES, targets
-from features import build as build_feats
 from views import focus_views, headtail
 
 sys.path.insert(0, str(OUT.parents[2] / "src"))
-from paiec.features.item import ItemFeaturizer  # noqa: E402
+from paiec.features.item import ItemFeaturizer
 
 ALPHAS = (0.1, 1, 10, 100, 1000, 10000)
 FOLDS = TEST_BENCHES + ["swe_rebench"]

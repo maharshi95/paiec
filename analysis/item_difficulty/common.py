@@ -21,12 +21,12 @@ os.environ.setdefault("OMP_NUM_THREADS", "4")
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
+import numpy as np
+import pandas as pd
 
-from paiec.data.dataset import load_dataset  # noqa: E402
-from paiec.predictors.irt import rasch  # noqa: E402
-from paiec.predictors.simple import sigmoid  # noqa: E402
+from paiec.data.dataset import load_dataset
+from paiec.predictors.irt import rasch
+from paiec.predictors.simple import sigmoid
 
 BENCHES = ["matharena", "mmdocrag", "multi_swebench", "real_webagents", "researchcodebench", "swe_rebench"]
 TEST_BENCHES = ["matharena", "mmdocrag", "multi_swebench", "real_webagents", "researchcodebench"]

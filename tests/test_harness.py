@@ -102,7 +102,7 @@ def test_build_submission(ds, tmp_path):
 @pytest.mark.parametrize("name", sorted(PREDICTORS))
 def test_incremental_state_matches_fresh(ds, name):
     """extend() on growing evidence must give the same predictions as adapt() from scratch."""
-    pred = build_predictor({"name": name, **({"adapt_iters": 200} if name == "irt" else {})})
+    pred = build_predictor({"name": name, **({"adapt_iters": 200} if name in ("irt", "mirt") else {})})
     pred.fit(ds.restrict(["bench0", "bench1"]))
     ev = _evidence(ds, 120)
     inp = [ds.subjects[1], ds.items[260]]
@@ -117,3 +117,62 @@ def test_build_policy_switch_drops_foreign_params():
     assert build_policy({"name": "quantile", "radius": 0.1}).name == "quantile"
     with pytest.raises(ValueError):
         build_policy({"name": "quantile", "radiuss": 0.1})
+
+
+def test_mirt_learns_interaction():
+    """Two item types and two subject groups with opposite skills: MIRT should beat IRT given labels."""
+    from paiec.data.dataset import SUBJECT_FIELDS, Dataset, anon_benchmark_id
+    rng = np.random.default_rng(0)
+    subjects, items, ib, rs, ri, ry = [], [], [], [], [], []
+    for s in range(24):
+        d = {f: "" for f in SUBJECT_FIELDS}
+        d["normalized_name"] = f"{'coder' if s % 2 else 'poet'} model {s}"
+        subjects.append(d)
+    for b in range(4):
+        for j in range(120):
+            typ = j % 2
+            items.append({"item_content": ("write code function compile" if typ else "write poem verse rhyme") + f" {j}",
+                          "item_features": "", "interactors": "", "benchmark_id": anon_benchmark_id(f"b{b}")})
+            ib.append(b)
+            for s in range(24):
+                p = 1 / (1 + np.exp(-(2.0 if (s % 2) == typ else -2.0)))
+                rs.append(s)
+                ri.append(len(items) - 1)
+                ry.append(float(rng.random() < p))
+    ds = Dataset(subjects, items, np.array(ib), [f"b{b}" for b in range(4)], [f"s{s}" for s in range(24)],
+                 [f"i{k}" for k in range(len(items))], np.array(rs), np.array(ri), np.array(ry), "t")
+    out = {}
+    for name in ("irt", "mirt"):
+        cfg = merge(DEFAULTS, {"name": name, "predictor": {"name": name, **({"ndim": 2} if name == "mirt" else {})},
+                               "acquisition": {"name": "accept_all"}, "cv": {"seeds": [0], "test_benchmarks": ["b3"]}})
+        out[name] = run_experiment(cfg, ds=ds, write=False, verbose=False)["alc"]
+    assert out["mirt"] < out["irt"] - 0.02, out
+
+
+@pytest.mark.parametrize("name", ["irt", "mirt"])
+def test_subject_sharing_contracts(ds, tmp_path, name):
+    cfg = {"name": name, "subject_sharing": True, "adapt_iters": 200, **({"ndim": 2} if name == "mirt" else {})}
+    pred = build_predictor(cfg).fit(ds.restrict(["bench0", "bench1"]))
+    ev = _evidence(ds, 120)
+    inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::97], ds.resp_i[::97])]
+    assert np.allclose(pred.predict_batch(inputs, ev), [pred.predict(list(x), ev) for x in inputs])
+    inp = [ds.subjects[1], ds.items[260]]
+    for n in (10, 60):
+        pred.predict(inp, ev[:n])
+    inc = pred.predict(inp, ev)
+    pred.reset_runtime()
+    assert inc == pytest.approx(pred.predict(inp, ev), abs=1e-6)
+    save_predictor(pred, tmp_path / "predictor.json")
+    assert load_predictor(tmp_path).predict(inp, ev) == pytest.approx(pred.predict(inp, ev))
+
+
+def test_subject_sharing_uses_other_benchmarks(ds):
+    """With sharing, a subject's labels on bench1 move its prediction on bench2; without, they do not."""
+    s = ds.subjects[0]
+    other = [[[s, ds.items[i]], 1] for i in range(100, 130)]          # bench1 items, all solved
+    target = [s, ds.items[250]]                                        # bench2 item
+    moved = {}
+    for share in (False, True):
+        p = build_predictor({"name": "irt", "subject_sharing": share}).fit(ds.restrict(["bench0"]))
+        moved[share] = p.predict(target, other) - p.predict(target, [])
+    assert abs(moved[False]) < 1e-9 and moved[True] > 0.01

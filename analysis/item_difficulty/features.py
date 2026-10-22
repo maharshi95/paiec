@@ -15,7 +15,6 @@ import re
 
 import numpy as np
 import pandas as pd
-
 from common import OUT, targets
 
 _WORD = re.compile(r"[A-Za-z]+")
@@ -23,20 +22,20 @@ _NUM = re.compile(r"(?<![A-Za-z_])\d+(?:\.\d+)?")
 _URL = re.compile(r"https?://\S+")
 _PATHLIKE = re.compile(r"[\w\-./]+\.(?:py|js|ts|tsx|go|rs|java|c|cc|cpp|h|hpp|rb|php|kt|scala|cs|json|yml|yaml|toml|md|rst|txt|cfg|sh)\b")
 _IDENT = re.compile(r"\b[a-z]+(?:_[a-z0-9]+)+\b|\b[a-z]+[A-Z][A-Za-z0-9]+\b")  # snake_case / camelCase
-_STACK = re.compile(r"Traceback \(most recent call last\)|^\s+at [\w.$]+\(|panic:|Exception in thread|stack trace|goroutine \d+", re.M | re.I)
-_ERRWORD = re.compile(r"\b(?:error|exception|fail(?:s|ed|ure)?|crash(?:es|ed)?|segfault|panic)\b", re.I)
-_FEATWORD = re.compile(r"\b(?:feature request|enhancement|support for|add support|would be nice|proposal|ENH|RFE)\b", re.I)
-_REPRO = re.compile(r"\b(?:steps to reproduce|to reproduce|reproduc(?:e|ible|tion)|minimal example|mcve)\b", re.I)
-_EXPECT = re.compile(r"\b(?:expected behavior|actual behavior|expected result|expected:|actual:)\b", re.I)
+_STACK = re.compile(r"Traceback \(most recent call last\)|^\s+at [\w.$]+\(|panic:|Exception in thread|stack trace|goroutine \d+", re.MULTILINE | re.IGNORECASE)
+_ERRWORD = re.compile(r"\b(?:error|exception|fail(?:s|ed|ure)?|crash(?:es|ed)?|segfault|panic)\b", re.IGNORECASE)
+_FEATWORD = re.compile(r"\b(?:feature request|enhancement|support for|add support|would be nice|proposal|ENH|RFE)\b", re.IGNORECASE)
+_REPRO = re.compile(r"\b(?:steps to reproduce|to reproduce|reproduc(?:e|ible|tion)|minimal example|mcve)\b", re.IGNORECASE)
+_EXPECT = re.compile(r"\b(?:expected behavior|actual behavior|expected result|expected:|actual:)\b", re.IGNORECASE)
 _MATH_ENV = re.compile(r"\\(?:frac|sum|prod|int|binom|sqrt|lfloor|lceil|cdot|le|ge|leq|geq|neq|pmod|mod|equiv)\b")
-_PROOF = re.compile(r"\b(?:prove|proof|show that|determine all|find all)\b", re.I)
-_MULTI = re.compile(r"\b(?:and then|then|after that|afterwards|finally|also|as well as|both|each|every|all)\b", re.I)
-_COMPARE = re.compile(r"\b(?:compare|comparison|differ|difference|rank|most|least|highest|lowest|largest|smallest|best|worst)\b", re.I)
-_COUNT = re.compile(r"\bhow many\b|\bnumber of\b|\bcount\b|\bsum of\b|\btotal\b", re.I)
-_DATE = re.compile(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}|\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", re.I)
+_PROOF = re.compile(r"\b(?:prove|proof|show that|determine all|find all)\b", re.IGNORECASE)
+_MULTI = re.compile(r"\b(?:and then|then|after that|afterwards|finally|also|as well as|both|each|every|all)\b", re.IGNORECASE)
+_COMPARE = re.compile(r"\b(?:compare|comparison|differ|difference|rank|most|least|highest|lowest|largest|smallest|best|worst)\b", re.IGNORECASE)
+_COUNT = re.compile(r"\bhow many\b|\bnumber of\b|\bcount\b|\bsum of\b|\btotal\b", re.IGNORECASE)
+_DATE = re.compile(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}|\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", re.IGNORECASE)
 _QUOTED = re.compile(r"\"[^\"]{2,80}\"|'[^']{2,80}'")
 _TODO = re.compile(r'TODO: Implement block "([^"]+)"\s*\n\s*# Approximately (\d+) line')
-_BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)]|\\item)\s", re.M)
+_BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)]|\\item)\s", re.MULTILINE)
 
 
 def _safe_log(x):
@@ -93,10 +92,10 @@ def visible_features(item: dict, max_scan: int = 200_000) -> dict:
         "n_multi": _safe_log(len(_MULTI.findall(s))),
         "n_compare": _safe_log(len(_COMPARE.findall(s))),
         "n_count": _safe_log(len(_COUNT.findall(s))),
-        "n_and": _safe_log(len(re.findall(r"\band\b", s, re.I))),
+        "n_and": _safe_log(len(re.findall(r"\band\b", s, re.IGNORECASE))),
         "n_dates": _safe_log(len(_DATE.findall(s))),
-        "mentions_image": float(bool(re.search(r"\b(?:image|figure|picture|diagram|screenshot|photo)\b", s[:4000], re.I))),
-        "mentions_table_page": float(bool(re.search(r"\b(?:table|page|chart|graph|slide)\b", s[:4000], re.I))),
+        "mentions_image": float(bool(re.search(r"\b(?:image|figure|picture|diagram|screenshot|photo)\b", s[:4000], re.IGNORECASE))),
+        "mentions_table_page": float(bool(re.search(r"\b(?:table|page|chart|graph|slide)\b", s[:4000], re.IGNORECASE))),
         # ---- kv metadata (generic) ----
         "kv_n_keys": len(kv),
         "kv_has_index": float(any(v.isdigit() for v in kv.values())),
@@ -112,7 +111,7 @@ def visible_features(item: dict, max_scan: int = 200_000) -> dict:
     # issue-shaped texts: title = first line
     first = c.split("\n", 1)[0]
     f["title_log_chars"] = math.log1p(len(first))
-    f["title_is_bug"] = float(bool(re.search(r"\b(?:bug|error|fail|crash|wrong|incorrect|broken|not work|doesn't|does not|issue)\b", first, re.I)))
+    f["title_is_bug"] = float(bool(re.search(r"\b(?:bug|error|fail|crash|wrong|incorrect|broken|not work|doesn't|does not|issue)\b", first, re.IGNORECASE)))
     return f
 
 
@@ -127,9 +126,9 @@ def hidden_features(row) -> dict:
     ref = ref if isinstance(ref, str) else ""
     out["h_ref_log_chars"] = math.log1p(len(ref))
     if ref.startswith("diff --git"):
-        files = re.findall(r"^diff --git a/(\S+)", ref, re.M)
-        add = len(re.findall(r"^\+(?!\+\+)", ref, re.M))
-        rem = len(re.findall(r"^-(?!--)", ref, re.M))
+        files = re.findall(r"^diff --git a/(\S+)", ref, re.MULTILINE)
+        add = len(re.findall(r"^\+(?!\+\+)", ref, re.MULTILINE))
+        rem = len(re.findall(r"^-(?!--)", ref, re.MULTILINE))
         out.update({"h_patch_files": math.log1p(len(files)), "h_patch_hunks": math.log1p(ref.count("\n@@")),
                     "h_patch_lines": math.log1p(add + rem), "h_patch_add": math.log1p(add), "h_patch_rem": math.log1p(rem),
                     "h_patch_test_files": float(sum("test" in f.lower() for f in files))})

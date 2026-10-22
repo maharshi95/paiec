@@ -1,0 +1,6 @@
+name: dev_beta_shrink
+base: configs/split/dev_base.yaml
+predictor:
+  name: beta_shrink
+acquisition:
+  name: accept_all

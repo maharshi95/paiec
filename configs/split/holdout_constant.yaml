@@ -1,0 +1,6 @@
+name: holdout_constant
+base: configs/split/holdout_base.yaml
+predictor:
+  name: constant
+acquisition:
+  name: official_random

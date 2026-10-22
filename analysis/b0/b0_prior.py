@@ -9,10 +9,10 @@ import sys
 import numpy as np
 
 sys.path.insert(0, "src")
-from paiec.config import load_config  # noqa: E402
-from paiec.data.dataset import load_dataset  # noqa: E402
-from paiec.predictors import build_predictor  # noqa: E402
-from paiec.sim.replay import build_pairs  # noqa: E402
+from paiec.config import load_config
+from paiec.data.dataset import load_dataset
+from paiec.predictors import build_predictor
+from paiec.sim.replay import build_pairs
 
 
 def pair_brier(pred, ds, pairs):
@@ -34,7 +34,7 @@ for test_b in cfg["cv"]["test_benchmarks"]:
     base = build_predictor(cfg["predictor"]).fit(train)
     pairs = build_pairs(ds, [test_b], max_eval_items=200)
     rate = np.mean([y.mean() for pr in pairs for y in pr.evl_ys])
-    r = {"const .5": 0.25, "oracle const (base rate)": float(np.mean([np.mean([(y.mean() - yy) ** 2 for yy in []] or [0]) for _ in [0]]))}
+    r = {"const .5": 0.25}
     # oracle per-pair constant = pair base rate (upper bound for 'right offset, no item info')
     r["oracle pair rate"] = float(np.mean([np.mean(np.concatenate(pr.evl_ys)) * (1 - np.mean(np.concatenate(pr.evl_ys))) for pr in pairs]))
     tr_mean = float(train.resp_y.mean())
@@ -56,7 +56,6 @@ for test_b in cfg["cv"]["test_benchmarks"]:
         m = np.mean([p.predict_batch([(ds.subjects[pr.subject], ds.items[i]) for i in pr.evl[:40]], []).mean() for pr in pairs])
         lo, hi = (p.mu_beta, hi) if m < rate else (lo, p.mu_beta)
     r["irt ORACLE offset"] = pair_brier(p, ds, pairs)
-    r.pop("oracle const (base rate)")
     rows[test_b] = r
     print(test_b, f"rate={rate:.3f} mu_beta={base.mu_beta:.2f} var_beta={base.var_beta:.2f} var_u={base.var_u:.2f} var_d={base.var_d:.2f}", flush=True)
 names = list(next(iter(rows.values())))

@@ -1,0 +1,2 @@
+name: holdout_irt
+base: configs/split/holdout_base.yaml

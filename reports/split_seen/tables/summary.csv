@@ -1,0 +1,4 @@
+group,benchmarks,domains,subjects,eligible pairs,ref6-seen eligible pairs,"responses (M, uncapped)",median base rate
+train pool,166,34,16375,13643,2770,67.1,0.508
+dev (eval),30,15,2935,2201,798,8.0,0.568
+hold-out (eval),12,12,1247,1209,221,0.8,0.568

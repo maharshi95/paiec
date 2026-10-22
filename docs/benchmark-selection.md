@@ -49,6 +49,8 @@ Follow-ups:
 - whether `lower_is_better` binary benchmarks (`binarize.orient`) should be flipped for cross-benchmark subject priors.
 
 ## Ref6-seen eval split (2026-10-22; `configs/split_seen/`, the current default protocol)
+**Quality report:** `reports/split_seen/report.md` (figures and tables), regenerated with `python scripts/split_report.py --split configs/split_seen`. All 10 sanity checks pass. Notable shifts: eval subjects are newer (57% released 2025–26 vs 37% in training, benchmark-weighted), eval is text-only, and about a third of eval labels come from thresholding graded scales.
+
 **Goal:** eval benchmarks whose *models* already appear in the six reference benchmarks, as on the hosted platform, which presumably draws subjects from a similar population, while staying diverse.
 
 **Model identity.** Raw names differ across benchmarks (`claude-3-5-sonnet-20241022`, `Anthropic Claude 3.5 Sonnet`, `GPT_4O_2024_08_06`). `features/identity.py` canonicalises them to token sets, dropping org prefixes, dates, active-parameter tags and mode words. The ref6 benchmarks contain 271 canonical identities. 19% of pool subjects match one, and identity from visible fields alone matches almost as well as with `display_name` (19.0% vs 19.4%). Per-benchmark counts are in `analysis/subjects/ref6_overlap.py` → `ref6_overlap.csv`.

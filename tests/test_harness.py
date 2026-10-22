@@ -235,3 +235,23 @@ def test_fit_as_shares_parent_fit_cache(ds, tmp_path, monkeypatch):
     assert type(loaded_a).__name__ == "IRT"
     loaded_b = fit_cached(build_predictor(ITEM_CFG), ds.restrict(["bench0"]), ["bench0"], {}, "r")
     assert type(loaded_b).__name__ == "IRTItem" and loaded_b.rp_frac == 0.3
+
+
+def test_irt_h_hyper_contracts(ds):
+    """irt_h with every hierarchical part on: batch = single, incremental = fresh, and off = irt."""
+    hyp = {"nu_u": 10.0, "nu_d": 10.0, "tau_u": 0.5, "tau_d": 0.5, "vi": True}
+    pred = build_predictor({"name": "irt_h", "adapt_iters": 300, **hyp}).fit(ds.restrict(["bench0", "bench1"]))
+    ev = _evidence(ds, 120)
+    inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::97], ds.resp_i[::97])]
+    batch = pred.predict_batch(inputs, ev)
+    assert np.allclose(batch, [pred.predict(list(x), ev) for x in inputs])
+    inp = [ds.subjects[1], ds.items[260]]
+    pred.reset_runtime()
+    for n in (10, 60, 120):
+        pred.predict(inp, ev[:n])
+    inc = pred.predict(inp, ev)
+    pred.reset_runtime()
+    assert inc == pytest.approx(pred.predict(inp, ev), abs=1e-5)
+    off = build_predictor({"name": "irt_h"}).fit(ds.restrict(["bench0", "bench1"]))
+    ref = build_predictor({"name": "irt"}).fit(ds.restrict(["bench0", "bench1"]))
+    assert np.allclose(off.predict_batch(inputs, ev), ref.predict_batch(inputs, ev))

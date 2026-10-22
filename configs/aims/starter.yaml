@@ -1,0 +1,5 @@
+# template model to copy (src/paiec/predictors/starter.py)
+name: aims_starter
+base: configs/aims/base.yaml
+predictor: {name: starter}
+acquisition: {name: accept_all}

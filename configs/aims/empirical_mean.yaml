@@ -1,0 +1,5 @@
+# official baseline: mean of the pair's revealed labels
+name: aims_empirical_mean
+base: configs/aims/base.yaml
+predictor: {name: empirical_mean}
+acquisition: {name: official_random}

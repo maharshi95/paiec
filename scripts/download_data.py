@@ -1,4 +1,13 @@
-"""Download measurement-db formatted tables (gated: needs `hf auth login` with accepted terms).
+"""Download data: the ready-made train/val split (start here), or raw measurement-db tables.
+
+    python scripts/download_data.py --split                 # -> data/aims/{train,val}
+    python scripts/download_data.py --split val             # one half only
+
+--split fetches the harness's benchmark-level split from the HF datasets mgor/aims-measurement-db-train
+and mgor/aims-measurement-db-val (built by scripts/export_split.py; same layout as measurement-db), which
+configs/aims/*.yaml read. Everything below is for working with the full upstream dataset instead.
+
+Download measurement-db formatted tables (gated: needs `hf auth login` with accepted terms).
 
 Hub layout: {benchmark}/formatted_tables/{benchmarks,subjects,items,responses,traces,assets}.parquet
 (+ raw/ source archives, which we never fetch). 281 benchmark folders at revision 54074453:
@@ -22,6 +31,16 @@ from huggingface_hub import HfApi, hf_hub_download
 REPO = "aims-foundations/measurement-db"
 DEFAULT_ROOT = "/fs/clip-scratch/mgor/measurement-db"
 CORE = ("benchmarks", "subjects", "items", "responses")
+SPLIT_REPOS = {"train": "mgor/aims-measurement-db-train", "val": "mgor/aims-measurement-db-val"}
+
+
+def download_split(which, out, revision=None, workers=8):
+    from huggingface_hub import snapshot_download
+    for name in SPLIT_REPOS if which == "all" else [which]:
+        path = snapshot_download(SPLIT_REPOS[name], repo_type="dataset", revision=revision,
+                                 local_dir=Path(out) / name, max_workers=workers)
+        n = sum(1 for p in Path(path).iterdir() if (p / "formatted_tables").is_dir())
+        print(f"{SPLIT_REPOS[name]} -> {path} ({n} benchmarks)")
 
 
 def select(root, benchmarks, query, all_, max_mb):
@@ -41,7 +60,9 @@ def select(root, benchmarks, query, all_, max_mb):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", "--out", dest="root", default=DEFAULT_ROOT)
+    ap.add_argument("--split", nargs="?", const="all", choices=["all", "train", "val"],
+                    help="download the ready-made train/val split (default: both) to --root (default data/aims)")
+    ap.add_argument("--root", "--out", dest="root", default=None)
     ap.add_argument("--revision", default=None, help="commit sha to pin (default: latest)")
     ap.add_argument("--benchmarks", nargs="*")
     ap.add_argument("--query", help="pandas query over inventory.csv")
@@ -50,6 +71,9 @@ def main():
     ap.add_argument("--traces", action="store_true")
     ap.add_argument("--workers", type=int, default=8)
     a = ap.parse_args()
+    if a.split:
+        return download_split(a.split, a.root or "data/aims", a.revision, a.workers)
+    a.root = a.root or DEFAULT_ROOT
     sha = HfApi().dataset_info(REPO, revision=a.revision).sha
     slugs = select(a.root, a.benchmarks, a.query, a.all, a.max_mb)
     tables = CORE + (("traces",) if a.traces else ())

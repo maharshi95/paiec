@@ -1,0 +1,27 @@
+# Standard protocol on the published split (docs/getting-started.md). Get the data first:
+#   python scripts/download_data.py --split      # -> data/aims/train, data/aims/val
+# Fit on every benchmark in data/aims/train (HF mgor/aims-measurement-db-train); evaluate on the 30
+# val benchmarks (mgor/aims-measurement-db-val) in 5 groups of 6, replaying the hosted protocol.
+# Method configs set `base: configs/aims/base.yaml` and override predictor / acquisition.
+name: aims_base
+data:
+  root: [data/aims/train, data/aims/val]
+  binarize: {mode: threshold, threshold: 0.5}   # graded scales -> y = (normalised grade >= 0.5)
+  max_item_chars: 8000      # memory; the export keeps full item text
+  # The export is already capped at 100K responses per benchmark (scripts/export_split.py).
+cv:
+  train_benchmarks: data/aims/train   # a directory = every benchmark in it
+  test_benchmarks:          # val groups (val split.json `folds`); each group is held out together
+  - [agentdojo, agi_elo, benger, medhelm_head_qa, phyblock, atmossci_bench]
+  - [appworld, biggen, mathvista_mini, rakuda, helm_airbench, engdesign]
+  - [workbench_revisited, kmmlu, robust_reasoning_benchmark, worldcentralbanks, helm_bbq, algotune]
+  - [sketchjudge, ikp, afrimedqa, arcagi, scale_mrt, editbench]
+  - [dataclawbench, mmlupro, icpc2_code_selector, babilong, ai2d_test, theagentcompany]
+  seeds: [0, 1, 2]          # candidate order + revealed trials; same seeds -> paired comparisons
+  max_subjects_per_benchmark: 20
+  max_eval_items_per_pair: 100
+  eval_seen_from: [matharena, mmdocrag, multi_swebench, real_webagents, researchcodebench, swe_rebench]   # score only models also seen in the 6 reference benchmarks
+sim:
+  evidence_scope: global    # every pair's revealed labels are visible (hosted behaviour)
+predictor: {name: empirical_mean}
+acquisition: {name: official_random}

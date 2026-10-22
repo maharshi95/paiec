@@ -44,12 +44,16 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
         ref = np.isin(ds.resp_b, [ds.bench_names.index(b) for b in cv["eval_seen_from"] if b in ds.bench_names])
         seen = {subject_identity(ds.subjects[s]) for s in np.unique(ds.resp_s[ref])}
         allowed = {k for k, s in enumerate(ds.subjects) if subject_identity(s) in seen}
+    train_pool = cv.get("train_benchmarks")
+    if isinstance(train_pool, str):   # a data directory: every benchmark downloaded there (e.g. data/aims/train)
+        from .data.dataset import find_benchmarks
+        train_pool = sorted(find_benchmarks(train_pool))
     rows, folds_out, timing = [], {}, {"fit_s": 0.0, "acq_calls": 0, "acq_s": 0.0, "eval_inputs": 0, "eval_s": 0.0}
     for fold in folds:
         group = [fold] if isinstance(fold, str) else list(fold)
         group = [b for b in group if b in benches]
         test_b = group[0] if len(group) == 1 else "+".join(group)
-        train_b = [b for b in (cv.get("train_benchmarks") or benches) if b in benches and b not in group]
+        train_b = [b for b in (train_pool or benches) if b in benches and b not in group]
         train = ds.restrict(train_b)
         t0 = time.perf_counter()
         pred = fit_cached(build_predictor(cfg["predictor"]), train, train_b, cfg["data"], ds.revision,

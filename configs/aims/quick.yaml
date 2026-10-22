@@ -1,0 +1,13 @@
+# Smoke test (~10 s, <1 GB RAM): fit on the 6 reference benchmarks only, evaluate the
+# first val group with 1 seed. Numbers are not comparable to base.yaml; use it to check a new model runs.
+#   python scripts/run.py --config configs/aims/quick.yaml --set predictor.name=mine
+name: aims_quick
+base: configs/aims/base.yaml
+data:
+  benchmarks: [matharena, mmdocrag, multi_swebench, real_webagents, researchcodebench, swe_rebench, agentdojo, agi_elo, benger, medhelm_head_qa, phyblock, atmossci_bench]
+cv:
+  train_benchmarks: [matharena, mmdocrag, multi_swebench, real_webagents, researchcodebench, swe_rebench]
+  test_benchmarks: [[agentdojo, agi_elo, benger, medhelm_head_qa, phyblock, atmossci_bench]]
+  seeds: [0]
+predictor: {name: starter}
+acquisition: {name: accept_all}

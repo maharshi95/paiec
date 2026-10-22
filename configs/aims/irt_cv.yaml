@@ -1,0 +1,6 @@
+# Champion under the research loop's dev protocol: each val group is scored by a model trained on
+# train + the other 4 val groups (more training data; reproduces runs/R_champion_dev on the full db).
+name: aims_irt_cv
+base: configs/aims/irt.yaml
+cv:
+  train_benchmarks: null    # = every loaded benchmark minus the held-out group

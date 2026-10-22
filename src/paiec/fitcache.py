@@ -11,8 +11,8 @@ Runtime methods (adapt, extend, score, _bench_step, ...) are *not* hashed: edits
 cached fit, which is the point. If a fit depends on code outside these (rare), set
 `cv.fit_cache: false` or bump the class attribute FIT_VERSION.
 
-Location: $PAIEC_FIT_CACHE (default /fs/clip-scratch/mgor/paiec-cache/fits), shared by worktrees;
-safe because the key covers the fit code.
+Location: $PAIEC_FIT_CACHE; else the team's shared /fs/clip-scratch/mgor/paiec-cache/fits when it exists
+(shared by worktrees; safe because the key covers the fit code); else data/fit_cache in the repo.
 """
 import hashlib
 import inspect
@@ -22,8 +22,9 @@ import pickle
 import sys
 from pathlib import Path
 
-DEFAULT_DIR = "/fs/clip-scratch/mgor/paiec-cache/fits"
 _PKG = Path(__file__).parent
+_SHARED = Path("/fs/clip-scratch/mgor/paiec-cache/fits")
+DEFAULT_DIR = _SHARED if _SHARED.parent.is_dir() else _PKG.parents[1] / "data" / "fit_cache"
 
 
 def _params(pred):

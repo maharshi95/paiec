@@ -1,0 +1,5 @@
+# current champion: amortised IRT, content-based item priors, uncertainty acquisition (docs/model.md)
+name: aims_irt
+base: configs/aims/base.yaml
+predictor: {name: irt, item_target: absolute, beta_var_mult: 4.0}
+acquisition: {name: uncertainty, radius: 0.15}

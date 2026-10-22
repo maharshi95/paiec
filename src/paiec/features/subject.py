@@ -13,6 +13,7 @@ import re
 import numpy as np
 
 from .hashing import hash_tokens, parse_kv, tokenize
+from .identity import model_identity
 
 ALL_FIELDS = ("provider", "name", "think", "size", "date", "effort", "harness")
 EFFORT = {"minimal": 0.1, "low": 0.25, "medium": 0.5, "high": 0.75, "xhigh": 1.0, "max": 1.0}
@@ -36,7 +37,11 @@ def names(subject: dict) -> list:
 
 
 def subject_identity(subject: dict) -> str:
-    """Best-effort model identity shared across benchmarks (for history priors)."""
+    """Canonical model identity shared across benchmarks (features/identity.py); falls back to the
+    tokenised first visible name (or the whole dict) when no model name is visible."""
+    canon = model_identity(subject)
+    if canon:
+        return canon
     ns = names(subject)
     base = ns[0] if ns else "|".join(subject.get(k, "") for k in sorted(subject))
     return " ".join(tokenize(base, 200))

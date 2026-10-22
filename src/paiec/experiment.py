@@ -32,10 +32,17 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
         from .data.dataset import load_dataset
         d = cfg["data"]
         ds = load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"],
-                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"))
+                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"),
+                          prefer_seen_from=d.get("prefer_seen_from"))
     benches = [b for b in (cfg["data"]["benchmarks"] or ds.benchmarks()) if b in ds.benchmarks()]
     folds = cfg["cv"]["test_benchmarks"] or benches
     cv, sim = cfg["cv"], cfg["sim"]
+    allowed = None
+    if cv.get("eval_seen_from"):   # evaluate only subjects whose model identity appears in these benchmarks
+        from .features.subject import subject_identity
+        ref = np.isin(ds.resp_b, [ds.bench_names.index(b) for b in cv["eval_seen_from"] if b in ds.bench_names])
+        seen = {subject_identity(ds.subjects[s]) for s in np.unique(ds.resp_s[ref])}
+        allowed = {k for k, s in enumerate(ds.subjects) if subject_identity(s) in seen}
     rows, folds_out, timing = [], {}, {"fit_s": 0.0, "acq_calls": 0, "acq_s": 0.0, "eval_inputs": 0, "eval_s": 0.0}
     for fold in folds:
         group = [fold] if isinstance(fold, str) else list(fold)
@@ -48,7 +55,7 @@ def run_experiment(cfg: dict, ds=None, write=True, verbose=True) -> dict:
         seed_alcs, seed_budget = [], []
         for seed in cv["seeds"]:
             pairs = build_pairs(ds, group, cv["split_seed"], seed, cv["min_items"],
-                                cv["max_subjects_per_benchmark"], cv["max_eval_items_per_pair"])
+                                cv["max_subjects_per_benchmark"], cv["max_eval_items_per_pair"], allowed)
             if not pairs:
                 break
             pred.reset_runtime()

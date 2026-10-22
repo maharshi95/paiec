@@ -1,0 +1,6 @@
+name: seen_holdout_constant
+base: configs/split_seen/holdout_base.yaml
+predictor:
+  name: constant
+acquisition:
+  name: official_random

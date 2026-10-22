@@ -1,0 +1,7 @@
+name: seen_dev_mirt_k8_pair
+base: configs/split_seen/dev_base.yaml
+predictor:
+  name: mirt
+  item_target: absolute
+  beta_var_mult: 4.0
+  ndim: 8

@@ -1,0 +1,2 @@
+name: seen_dev_irt
+base: configs/split_seen/dev_base.yaml

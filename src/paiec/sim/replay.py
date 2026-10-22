@@ -38,12 +38,14 @@ class Pair:
     probs: dict = field(default_factory=dict)
 
 
-def build_pairs(ds, benchmarks, split_seed=0, seed=0, min_items=80, max_subjects=None, max_eval_items=None):
+def build_pairs(ds, benchmarks, split_seed=0, seed=0, min_items=80, max_subjects=None, max_eval_items=None,
+                allowed_subjects=None):
+    """allowed_subjects: optional set of subject indices eligible for evaluation pairs."""
     bidx = {ds.bench_names.index(b) for b in benchmarks}
     rb = ds.resp_b
     cells = defaultdict(lambda: defaultdict(list))
     for s, i, y, b in zip(ds.resp_s, ds.resp_i, ds.resp_y, rb):
-        if b in bidx:
+        if b in bidx and (allowed_subjects is None or s in allowed_subjects):
             cells[(int(s), int(b))][int(i)].append(float(y))
     if max_subjects:
         keep = set()

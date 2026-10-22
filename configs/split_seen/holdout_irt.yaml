@@ -1,0 +1,2 @@
+name: seen_holdout_irt
+base: configs/split_seen/holdout_base.yaml

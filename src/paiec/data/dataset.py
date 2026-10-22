@@ -113,10 +113,11 @@ def _binarize(name, values, cfg, scale=None):
 
 
 def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="data/processed",
-                 use_cache=True, max_responses=None, max_item_chars=None) -> Dataset:
+                 use_cache=True, max_responses=None, max_item_chars=None, prefer_seen_from=None) -> Dataset:
     """max_responses: cap per benchmark by keeping a seeded random subset of *subjects* (each kept
     pair keeps all of its items). max_item_chars: truncate stored item text (memory; featurizers
-    read at most a few thousand characters anyway)."""
+    read at most a few thousand characters anyway). prefer_seen_from: benchmarks whose model identities
+    are kept first when capping (e.g. the six reference benchmarks), so capped benchmarks retain them."""
     import pandas as pd
 
     root = Path(root)
@@ -125,7 +126,7 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
     slugs = sorted(p.name for p in root.iterdir() if (p / "formatted_tables").is_dir())
     if benchmarks:
         slugs = [s for s in slugs if s in benchmarks]
-    key = hashlib.sha1(json.dumps(["v2", revision, slugs, binarize, max_responses, max_item_chars], sort_keys=True).encode()).hexdigest()[:12]
+    key = hashlib.sha1(json.dumps(["v3", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from], sort_keys=True).encode()).hexdigest()[:12]
     cache = Path(cache_dir) / f"dataset_{key}.pkl"
     if use_cache and cache.exists():
         with open(cache, "rb") as f:
@@ -134,6 +135,13 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
     subjects, subject_ids, sidx = [], [], {}
     items, item_ids, item_bench, iidx = [], [], [], {}
     rs, ri, ry, bench_names = [], [], [], []
+    from ..features.subject import subject_identity
+    seen_ids = set()
+    for ref in prefer_seen_from or []:
+        f = root / ref / "formatted_tables" / "subjects.parquet"
+        if f.exists():
+            for r in pd.read_parquet(f).itertuples(index=False):
+                seen_ids.add(subject_identity({k: _s(getattr(r, k, None)) for k in SUBJECT_FIELDS}))
     rules = {}
     for slug in slugs:
         t = root / slug / "formatted_tables"
@@ -158,7 +166,10 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
         y = y[keep]
         if max_responses and len(resp) > max_responses:
             counts = resp.subject_id.value_counts()
-            order = sorted(counts.index, key=lambda x: hashlib.md5(f"{slug}|{x}".encode()).hexdigest())
+            sub_tab = pd.read_parquet(t / "subjects.parquet")
+            seen = {r.subject_id for r in sub_tab.itertuples(index=False)
+                    if subject_identity({k: _s(getattr(r, k, None)) for k in SUBJECT_FIELDS}) in seen_ids}
+            order = sorted(counts.index, key=lambda x: (x not in seen, hashlib.md5(f"{slug}|{x}".encode()).hexdigest()))
             keep_s, total = set(), 0
             for sid in order:
                 if total and total + counts[sid] > max_responses:

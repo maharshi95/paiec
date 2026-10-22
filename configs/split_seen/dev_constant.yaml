@@ -1,0 +1,6 @@
+name: seen_dev_constant
+base: configs/split_seen/dev_base.yaml
+predictor:
+  name: constant
+acquisition:
+  name: official_random

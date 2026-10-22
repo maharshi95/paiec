@@ -51,7 +51,8 @@ def main():
         from paiec.data.dataset import load_dataset
         d = base["data"]
         load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"],
-                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"))
+                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"),
+                          prefer_seen_from=d.get("prefer_seen_from"))
         with Pool(a.jobs) as pool:
             results = pool.map(_run, cfgs)
     else:

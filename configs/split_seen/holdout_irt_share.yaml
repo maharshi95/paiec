@@ -1,0 +1,7 @@
+name: seen_holdout_irt_share
+base: configs/split_seen/holdout_base.yaml
+predictor:
+  name: irt
+  item_target: absolute
+  beta_var_mult: 4.0
+  subject_sharing: true

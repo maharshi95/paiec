@@ -13,8 +13,8 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, "src")
-from paiec.data.dataset import _binarize, parse_scale  # noqa: E402
-from paiec.features.identity import identity_set, model_identity  # noqa: E402
+from paiec.data.dataset import _binarize, parse_scale
+from paiec.features.identity import identity_set, model_identity
 
 ROOT = Path("/fs/clip-scratch/mgor/measurement-db")
 REF6 = ["matharena", "mmdocrag", "multi_swebench", "real_webagents", "researchcodebench", "swe_rebench"]

@@ -40,33 +40,47 @@ class Pair:
 
 def build_pairs(ds, benchmarks, split_seed=0, seed=0, min_items=80, max_subjects=None, max_eval_items=None,
                 allowed_subjects=None):
-    """allowed_subjects: optional set of subject indices eligible for evaluation pairs."""
+    """Pairs with >= min_items distinct *source items* (variants of one item_id that differ only in
+    interactors count once and stay in the same pool, as on the platform). max_subjects samples among
+    eligible subjects only. allowed_subjects: optional set of subject indices eligible for evaluation.
+    """
     bidx = {ds.bench_names.index(b) for b in benchmarks}
     rb = ds.resp_b
     cells = defaultdict(lambda: defaultdict(list))
     for s, i, y, b in zip(ds.resp_s, ds.resp_i, ds.resp_y, rb):
         if b in bidx and (allowed_subjects is None or s in allowed_subjects):
             cells[(int(s), int(b))][int(i)].append(float(y))
+    groups = {}
+    for key, items in cells.items():
+        g = defaultdict(list)
+        for i in sorted(items):
+            g[ds.item_ids[i].split("|", 1)[0]].append(i)
+        if len(g) >= min_items:
+            groups[key] = sorted(g.values(), key=min)
     if max_subjects:
         keep = set()
         for b in bidx:
-            subs = sorted({s for (s, bb) in cells if bb == b}, key=lambda s: ds.subject_ids[s])
+            subs = sorted({s for (s, bb) in groups if bb == b}, key=lambda s: ds.subject_ids[s])
             _rng("subjects", split_seed, b).shuffle(subs)
             keep |= {(s, b) for s in subs[:max_subjects]}
-        cells = {k: v for k, v in cells.items() if k in keep}
+        groups = {k: v for k, v in groups.items() if k in keep}
     pairs = []
-    for (s, b), items in sorted(cells.items()):
-        if len(items) < min_items:
-            continue
-        ids = sorted(items)
-        _rng("split", split_seed, ds.subject_ids[s], b).shuffle(ids)
-        h = len(ids) // 2
-        acq, evl = ids[:h], ids[h:]
+    for (s, b), gl in sorted(groups.items()):
+        items = cells[(s, b)]
+        gl = list(gl)
+        _rng("split", split_seed, ds.subject_ids[s], b).shuffle(gl)
+        h = len(gl) // 2
+        acq_g, evl_g = gl[:h], gl[h:]
+        evl = [i for v in evl_g for i in v]
         if max_eval_items and len(evl) > max_eval_items:
             evl = evl[:max_eval_items]
         r = _rng("order", seed, ds.subject_ids[s], b)
-        r.shuffle(acq)
-        outcomes = {i: r.choice(items[i]) for i in acq}
+        r.shuffle(acq_g)
+        acq, outcomes = [], {}
+        for v in acq_g:   # one visible candidate per source item, then one recorded trial of it
+            i = v[0] if len(v) == 1 else r.choice(v)
+            acq.append(i)
+            outcomes[i] = r.choice(items[i])
         pairs.append(Pair(s, b, acq, outcomes, evl, [np.array(items[i]) for i in evl]))
     return pairs
 

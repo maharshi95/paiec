@@ -182,3 +182,21 @@ def test_build_predictor_switch_drops_foreign_params():
     assert build_predictor({"name": "constant", "item_target": "absolute"}).name == "constant"
     with pytest.raises(ValueError):
         build_predictor({"name": "constant", "item_targett": "absolute"})
+
+
+def test_build_pairs_counts_source_items_and_keeps_variants_together(ds):
+    from dataclasses import replace
+    # duplicate every bench2 item as an interactor variant "<id>|v": visible items double, source items do not
+    b2 = [i for i in range(len(ds.items)) if ds.bench_names[ds.item_bench[i]] == "bench2"]
+    items = list(ds.items) + [dict(ds.items[i], interactors="tool") for i in b2]
+    ids = list(ds.item_ids) + [ds.item_ids[i] + "|v" for i in b2]
+    off = {i: len(ds.items) + k for k, i in enumerate(b2)}
+    m = np.isin(ds.resp_i, b2)
+    d2 = replace(ds, items=items, item_ids=ids, item_bench=np.concatenate([ds.item_bench, ds.item_bench[b2]]),
+                 resp_s=np.concatenate([ds.resp_s, ds.resp_s[m]]),
+                 resp_i=np.concatenate([ds.resp_i, [off[i] for i in ds.resp_i[m]]]),
+                 resp_y=np.concatenate([ds.resp_y, ds.resp_y[m]]))
+    assert not build_pairs(d2, ["bench2"], min_items=101)   # 100 source items < 101 although 200 variants
+    for p in build_pairs(d2, ["bench2"]):
+        src = lambda i: d2.item_ids[i].split("|")[0]
+        assert len(p.acq) == 50 and not {src(i) for i in p.acq} & {src(i) for i in p.evl}

@@ -45,3 +45,32 @@ Readings:
 - **Whether `labeled` is global is the single largest factor (0.03 ALC).** It is an *unverified* assumption from the collaborator's replay. Confirm it with the starting kit or the organizers before relying on it.
 - Selective acquisition helps a little (−0.004) once the predictor models item difficulty. Uncertainty sampling is the best simple rule so far, and it is now the default in `configs/irt.yaml`. Runtime cost is negligible: at about 4 ms per acquisition call, hosted time stays under 2% of the 8 h limit even at 100× the formative workload.
 - The prior-variance scale is already about right at 1.0. The remaining B0 gap needs a better cold-start prior, not a rescaled one.
+
+## 2026-10-22: B0 prior and acquisition rules (rounds 2–3)
+Control: `irt + uncertainty(0.15)` (ALC 0.1794). Δ is the paired per-pair ALC difference with its 95% CI (n = 864).
+
+**B0 diagnosis** (`analysis/b0/b0_prior.py`, B0 Brier, mean over folds):
+- current IRT 0.267
+- offset prior variance ×64: 0.253
+- IRT with the oracle benchmark offset: **0.204**
+- per-pair base rate (oracle): 0.170
+
+The cold-start loss is almost entirely the unknown benchmark offset (mmdocrag, base rate 0.78, is worst). Widening the offset variance only hedges toward 0.25.
+
+| variant | ALC | Δ vs control | B0 | B1 | B31 |
+|---|---|---|---|---|---|
+| **absolute item target + beta_var_mult=4** (new default) | **0.1772** | **−0.0032 ± 0.0010** | 0.255 | 0.197 | 0.127 |
+| absolute + beta_var_mult=16 | 0.1773 | −0.0030 ± 0.0010 | 0.250 | 0.197 | 0.128 |
+| beta_var_mult=16 | 0.1778 | −0.0025 ± 0.0009 | 0.258 | 0.197 | 0.129 |
+| absolute | 0.1781 | −0.0023 ± 0.0009 | 0.258 | 0.199 | 0.128 |
+| beta_var_mult=4 | 0.1789 | −0.0009 ± 0.0009 | 0.263 | 0.197 | 0.128 |
+| absolute + balanced benchmarks (± ×4) | 0.179 | ≈0 | 0.26 | 0.197 | 0.128 |
+| beta_var_mult=64 | 0.1794 | −0.0009 ± 0.0013 | 0.253 | 0.198 | 0.131 |
+| uncertainty radius 0.1 / 0.05 / 0.25 | 0.1792 / 0.1809 / 0.1809 | 0.0000 / +0.0013 / +0.0011 | | | |
+| information γ=0.5 / 1 / 3 | 0.1808 / 0.1804 / 0.1814 | +0.0011 / +0.0006 / +0.0019 | | | |
+| quantile (slack 1 / 1.5) | 0.1811 / 0.1808 | +0.0015 / +0.0011 | | | |
+
+Readings:
+- **Best B0 prior:** let item text predict absolute difficulty (offset included), and widen the offset prior (×4–16). B0 falls from 0.267 to 0.250–0.255, and B1 improves slightly because the offset is learned faster from the first labels. That is still far from the oracle-offset 0.204. Closing the gap needs better benchmark-level signals (see the subagent plan in docs/item-difficulty-plan.md).
+- Balancing benchmarks in the item ridge removes the gain. Large benchmarks seem to carry the useful cross-benchmark signal, but with 5 folds this is weak evidence.
+- **Acquisition:** uncertainty sampling with r ≈ 0.1–0.15 remains best. The model-aware `quantile` rule and rate-adaptive `information` rules are slightly worse. A likely reason: rejecting early is free while the pool is large, and a fixed tight band picks more informative items than a rule calibrated to fill exactly. Acquisition gains look saturated at about 0.004 ALC over random. The prior and features are the bigger levers.

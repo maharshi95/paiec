@@ -111,3 +111,9 @@ def test_incremental_state_matches_fresh(ds, name):
     inc = pred.predict(inp, ev)
     pred.reset_runtime()
     assert inc == pytest.approx(pred.predict(inp, ev), abs=1e-6)
+
+
+def test_build_policy_switch_drops_foreign_params():
+    assert build_policy({"name": "quantile", "radius": 0.1}).name == "quantile"
+    with pytest.raises(ValueError):
+        build_policy({"name": "quantile", "radiuss": 0.1})

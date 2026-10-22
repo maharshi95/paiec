@@ -124,5 +124,9 @@ POLICIES = {c.name: c for c in (AcceptAll, OfficialRandom, Uncertainty, Informat
 
 
 def build_policy(cfg: dict) -> Policy:
+    """Drop parameters that belong to *other* policies (so `--set acquisition.name=...` can switch
+    policies over a config that sets e.g. `radius`); unknown keys still raise."""
     cfg = dict(cfg)
-    return POLICIES[cfg.pop("name")](**cfg)
+    cls = POLICIES[cfg.pop("name")]
+    others = {k for c in POLICIES.values() if c is not cls for k in vars(c) if not k.startswith("_")}
+    return cls(**{k: v for k, v in cfg.items() if hasattr(cls, k) or k not in others})

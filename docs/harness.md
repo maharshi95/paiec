@@ -32,7 +32,7 @@ Use `pairs.csv` for paired comparisons. Runs with the same `cv.split_seed` and `
 | `cv.seeds`, `cv.split_seed` | candidate order and trial draws; fixed pools |
 | `cv.max_subjects_per_benchmark` | mimic platform subject sampling, or speed up |
 | `cv.max_eval_items_per_pair` | speed. Base config uses 200; set `null` for a final number |
-| `sim.evidence_scope` | `global` (all pairs' labels visible, the presumed hosted behaviour) or `pair` |
+| `sim.evidence_scope` | `global` (all pairs' labels visible; confirmed hosted behaviour) or `pair` |
 | `predictor.*` | `name` plus any class attribute of that predictor |
 | `acquisition.*` | `name` plus any class attribute of that policy |
 

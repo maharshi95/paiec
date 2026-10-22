@@ -200,3 +200,38 @@ def test_build_pairs_counts_source_items_and_keeps_variants_together(ds):
     for p in build_pairs(d2, ["bench2"]):
         src = lambda i: d2.item_ids[i].split("|")[0]
         assert len(p.acq) == 50 and not {src(i) for i in p.acq} & {src(i) for i in p.evl}
+
+
+ITEM_CFG = {"name": "irt_item", "rp_frac": 0.3, "rp_dim": 16, "kv_frac": 0.2, "dup_frac": 0.2}
+
+
+def test_irt_item_contracts(ds, tmp_path):
+    """Online item amortisation: batch = single, incremental = fresh, serialisation, zero fracs = IRT."""
+    pred = build_predictor({**ITEM_CFG, "adapt_iters": 300}).fit(ds.restrict(["bench0", "bench1"]))
+    ev = _evidence(ds, 120)
+    inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::97], ds.resp_i[::97])]
+    assert np.allclose(pred.predict_batch(inputs, ev), [pred.predict(list(x), ev) for x in inputs])
+    inp = [ds.subjects[1], ds.items[260]]
+    for n in (10, 60):
+        pred.predict(inp, ev[:n])
+    inc = pred.predict(inp, ev)
+    pred.reset_runtime()
+    assert inc == pytest.approx(pred.predict(inp, ev), abs=1e-5)
+    save_predictor(pred, tmp_path / "predictor.json")
+    assert load_predictor(tmp_path).predict(inp, ev) == pytest.approx(pred.predict(inp, ev))
+    base = build_predictor({"name": "irt"}).fit(ds.restrict(["bench0", "bench1"]))
+    zero = build_predictor({"name": "irt_item"}).fit(ds.restrict(["bench0", "bench1"]))
+    assert np.allclose(base.predict_batch(inputs, ev), zero.predict_batch(inputs, ev), atol=1e-12)
+
+
+def test_fit_as_shares_parent_fit_cache(ds, tmp_path, monkeypatch):
+    from paiec.fitcache import cache_key, fit_cached
+    monkeypatch.setenv("PAIEC_FIT_CACHE", str(tmp_path))
+    a, b = build_predictor({"name": "irt"}), build_predictor(ITEM_CFG)
+    assert cache_key(a, ["bench0"], {}, "r") == cache_key(b, ["bench0"], {}, "r")
+    fit_cached(b, ds.restrict(["bench0"]), ["bench0"], {}, "r")
+    assert type(b).__name__ == "IRTItem"
+    loaded_a = fit_cached(build_predictor({"name": "irt"}), ds.restrict(["bench0"]), ["bench0"], {}, "r")
+    assert type(loaded_a).__name__ == "IRT"
+    loaded_b = fit_cached(build_predictor(ITEM_CFG), ds.restrict(["bench0"]), ["bench0"], {}, "r")
+    assert type(loaded_b).__name__ == "IRTItem" and loaded_b.rp_frac == 0.3

@@ -101,3 +101,30 @@ Readings:
 - **More, and more diverse, training benchmarks help.** The gain is mostly at high budgets (B31 0.198 → 0.180), i.e. better item and subject priors and variance estimates. Domain gains vs ref6 are largest for education, language understanding, multilingual, law and safety (−0.02 to −0.04). A few domains get slightly worse (cybersecurity, navigation, long-term memory, preference: +0.01 to +0.02), which suggests similarity weighting could help.
 - **Panel ALC (~0.21) is not comparable to ref6-LOBO (~0.177).** The benchmark mixes differ. Compare only within a protocol.
 - Still to run on the panel: the constant and empirical-mean baselines, for context.
+
+## 2026-10-22: dev/hold-out split: subject sharing and multidimensional IRT (protocol: dev-5fold / locked hold-out, see validation.md)
+Universe: 208 benchmarks (pool, capped at 100K responses each); hold-out removed from dev runs. Settings: 1 seed, ≤20 subjects and ≤100 eval items per pair. Dev: 45 benchmarks, 707 pair evaluations. Hold-out: 12 benchmarks, 207 pairs. Δ is paired vs `irt` on the same split.
+
+| model | dev ALC | dev Δ vs irt | hold-out ALC | hold-out Δ vs irt |
+|---|---|---|---|---|
+| constant 0.5 | 0.2500 | +0.0369 ± 0.0050 | 0.2500 | +0.0534 ± 0.0081 |
+| empirical_mean (official baseline) | 0.2533 | +0.0398 ± 0.0044 | 0.2437 | +0.0471 ± 0.0088 |
+| beta_shrink | 0.2171 | +0.0042 ± 0.0022 | 0.2108 | +0.0142 ± 0.0056 |
+| irt (default; per-benchmark subject terms) | 0.2129 | 0 | 0.1966 | 0 |
+| irt + subject_sharing | 0.2127 | −0.0001 ± 0.0004 | 0.1966 | +0.0000 ± 0.0013 |
+| mirt K=8, per pair | 0.2134 | +0.0005 ± 0.0007 | 0.1972 | +0.0007 ± 0.0011 |
+| mirt K=2 + sharing | 0.2128 | −0.0001 ± 0.0006 | 0.1964 | −0.0002 ± 0.0012 |
+| **mirt K=4 + sharing** (best on dev) | **0.2125** | −0.0004 ± 0.0006 | **0.1961** | −0.0005 ± 0.0013 |
+| mirt K=8 + sharing | 0.2134 | +0.0005 ± 0.0008 | 0.1966 | +0.0000 ± 0.0013 |
+| mirt K=16 + sharing | 0.2135 | +0.0006 ± 0.0008 | 0.1967 | +0.0001 ± 0.0017 |
+
+Readings:
+- **IRT beats the official baseline by 0.040 on dev and 0.047 on hold-out** (better on 41/45 and 12/12 benchmarks), and beats beta_shrink by 0.004 and 0.014. The empirical-mean baseline is worse than a constant 0.5 on dev (B1 = 0.367).
+- **Warning:** on dev, IRT is worse than a constant 0.5 on **14 of 45 benchmarks** (pair-level ALC). Diagnosing these (offset or calibration failures) is the next priority.
+- **No variant is distinguishable from `irt`.** Every Δ is within noise. The K sweep is flat, with K=4 nominally best. The hold-out agrees with dev.
+- **Why sharing cannot help locally.** Model identities barely recur across benchmarks in a fold: 1.01–1.15 benchmarks per identity, and only 2–23% of pairs have their identity on another fold benchmark. Even without the 20-subject cap, the 9 benchmarks of a fold have only 2–26 identities on ≥2 benchmarks and none on ≥5. The data bank's benchmarks mostly evaluate different model sets, and identity strings match poorly (some are fallback junk). The hosted test pool comes from the same bank, so the expected gain there is probably small as well. It is kept as an option (`subject_sharing`), not the default.
+- **Why MIRT cannot help much.** Its skill vectors are per identity (same overlap problem), and its loadings come from item text, which transfers poorly across benchmarks (`item-difficulty-plan.md`). At test time a pair has ≤31 labels to estimate K skills.
+- Follow-ups:
+  - better identity resolution (canonical model names), which also helps the history prior;
+  - a "shared-subject" eval slice to measure sharing where it can matter;
+  - MIRT with LLM task-type loadings.

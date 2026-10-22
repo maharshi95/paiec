@@ -4,13 +4,15 @@ Deadline: **2026-10-30 AoE** (code + 4–8 page report on OpenReview, plus the c
 
 ## Current state (2026-10-22)
 - Default model: `configs/irt.yaml` (`model.md`). Built ZIP: `dist/irt.zip`, which passes the organizers' validator. **Not yet submitted to Codabench.**
-- Best numbers:
+- Best numbers (`results.md`):
   - ref6-LOBO: ALC 0.1772 vs the official baseline 0.2328;
-  - panel-5fold: 0.2076 with pool training (`results.md`).
+  - **dev-5fold: 0.2129 vs 0.2533;**
+  - **locked hold-out: 0.1966 vs 0.2437.**
+  - MIRT and subject sharing: no measurable gain (dev Δ within ±0.0006).
 - Data: all 278 public benchmarks are local, with a train pool (207) and eval panel (57) (`benchmark-selection.md`).
 
 ## Priorities
-1. **Validation hygiene:** create the locked hold-out split (`validation.md`) and run baselines on the panel.
+1. **Diagnose the 14 dev benchmarks where IRT is worse than a constant 0.5** (offset/calibration). Improve model-identity resolution (it helps history priors, and would let sharing and MIRT matter).
 2. **Submit to Codabench** with the pool-trained IRT, to get formative feedback and calibrate local-vs-hosted numbers.
 3. **Model:**
    - kv-group and duplicate tying, plus robustness guards (`model.md` roadmap 1–2);

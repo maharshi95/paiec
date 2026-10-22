@@ -202,7 +202,7 @@ def test_build_pairs_counts_source_items_and_keeps_variants_together(ds):
         assert len(p.acq) == 50 and not {src(i) for i in p.acq} & {src(i) for i in p.evl}
 
 
-ITEM_CFG = {"name": "irt_item", "rp_frac": 0.3, "rp_dim": 16, "kv_frac": 0.2, "dup_frac": 0.2, "eb_nu": 2.0, "eb_eps_nu": 20.0, "rp2_frac": 0.1, "rp2_dim": 8, "prior_slope_var": 0.2}
+ITEM_CFG = {"name": "irt_item", "rp_frac": 0.3, "rp_dim": 16, "kv_frac": 0.2, "dup_frac": 0.2, "eb_nu": 2.0, "eb_eps_nu": 20.0, "rp2_frac": 0.1, "rp2_dim": 8, "prior_slope_var": 0.2, "vi": True}
 
 
 def test_irt_item_contracts(ds, tmp_path):

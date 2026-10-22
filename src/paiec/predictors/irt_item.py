@@ -31,7 +31,7 @@ class IRTItem(IRT):
     name = "irt_item"
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
-                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var")
+                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var", "vi", "vi_frac")
     rp_frac = 0.0
     rp_dim = 64
     rp_seed = 0
@@ -50,6 +50,10 @@ class IRTItem(IRT):
     # a pseudo-count eb_nu (groups / map dims) toward the configured fraction. 0 = fixed fractions.
     eb_nu = 0.0
     eb_eps_nu = 0.0         # same for the item-specific variance (pseudo-count in items); 0 = fixed
+    # mean-field Gaussian VI instead of the joint MAP (as in irt_h): Newton steps use the expected likelihood
+    # sigmoid(eta / kappa), kappa = sqrt(1 + pi * vi_frac * v / 8), v = summed current posterior variances.
+    vi = False
+    vi_frac = 1.0
 
     # ---------------- item info (cached, pure) ----------------
     def _poly(self, Z):
@@ -237,6 +241,18 @@ class IRTItem(IRT):
             return s
 
         sh = shared()
+        vd_tot = self.var_d * vs
+        vb_, vdel_, vd_ = var_b, np.full(nP, var_u), np.full(nJ, vd_tot)
+
+        def lik():
+            eta = beta + delta[P] - d[J]
+            if not self.vi:
+                mu = sigmoid(eta)
+                return mu, mu * (1 - mu)
+            kap = np.sqrt(1 + np.pi * self.vi_frac * ((vb_ if self.learn_bench else 0.0) + vdel_[P] + vd_[J]) / 8)
+            mu = sigmoid(eta / kap)
+            return mu, mu * (1 - mu) / kap
+
         iters = int(self.item_iters) or self.adapt_iters
         nu = float(self.eb_nu)
         nu_e, var_e0 = float(self.eb_eps_nu), var_e
@@ -245,20 +261,25 @@ class IRTItem(IRT):
         for _ in range(iters):
             d = yh + sh + eps
             if self.learn_bench:
-                mu = sigmoid(beta + delta[P] - d[J])
-                beta += ((y - mu).sum() - (beta - self.mu_beta) / var_b) / ((mu * (1 - mu)).sum() + 1 / var_b)
-            mu = sigmoid(beta + delta[P] - d[J])
-            delta += (np.bincount(P, y - mu, nP) - (delta - u) / var_u) / (np.bincount(P, mu * (1 - mu), nP) + 1 / var_u)
+                mu, wt = lik()
+                hb = wt.sum() + 1 / var_b
+                beta += ((y - mu).sum() - (beta - self.mu_beta) / var_b) / hb
+                vb_ = 1 / hb
+            mu, wt = lik()
+            hP = np.bincount(P, wt, nP) + 1 / var_u
+            delta += (np.bincount(P, y - mu, nP) - (delta - u) / var_u) / hP
+            vdel_ = 1 / hP
             if self.learn_items:
-                mu = sigmoid(beta + delta[P] - d[J])
-                h = np.bincount(J, mu * (1 - mu), nJ)
+                mu, wt = lik()
+                h = np.bincount(J, wt, nJ)
+                vd_ = 1 / (h + 1 / vd_tot)
                 eps += (-np.bincount(J, y - mu, nJ) - eps / var_e) / (h + 1 / var_e)
                 if nu_e > 0:
                     var_e = (float((eps ** 2 + 1 / (h + 1 / var_e)).sum()) + nu_e * var_e0) / (nJ + nu_e)
                 d = yh + sh + eps
                 if use_rp:
-                    mu = sigmoid(beta + delta[P] - d[J])
-                    r, h = np.bincount(J, y - mu, nJ), np.bincount(J, mu * (1 - mu), nJ)
+                    mu, wt = lik()
+                    r, h = np.bincount(J, y - mu, nJ), np.bincount(J, wt, nJ)
                     pv = np.concatenate([np.full(sl.stop - sl.start, tv) for (sl, _), tv in zip(slices, t2)])
                     H = (Zc * h[:, None]).T @ Zc + np.diag(1 / pv)
                     w += np.linalg.solve(H, -Zc.T @ r - w / pv)
@@ -270,8 +291,8 @@ class IRTItem(IRT):
                     sh = shared()
                     d = yh + sh + eps
                 for bi, (jj, gg, aa) in enumerate(blocks):
-                    mu = sigmoid(beta + delta[P] - d[J])
-                    r, h = np.bincount(J, y - mu, nJ), np.bincount(J, mu * (1 - mu), nJ)
+                    mu, wt = lik()
+                    r, h = np.bincount(J, y - mu, nJ), np.bincount(J, wt, nJ)
                     sel = bsel[bi]
                     step = (np.bincount(gg, -aa * r[jj], nG) - g / s2[bi]) / (np.bincount(gg, aa * aa * h[jj], nG) + 1 / s2[bi])
                     g[sel] += step[sel]
@@ -282,8 +303,7 @@ class IRTItem(IRT):
                     sh = shared()
                     d = yh + sh + eps
         d = yh + sh + eps
-        mu = sigmoid(beta + delta[P] - d[J])
-        wt = mu * (1 - mu)
+        _, wt = lik()
         h = np.bincount(J, wt, nJ)
         vb = 1 / (wt.sum() + 1 / var_b) if self.learn_bench else var_b
         vdel = 1 / (np.bincount(P, wt, nP) + 1 / var_u)

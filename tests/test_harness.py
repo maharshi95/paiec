@@ -255,3 +255,19 @@ def test_irt_h_hyper_contracts(ds):
     off = build_predictor({"name": "irt_h"}).fit(ds.restrict(["bench0", "bench1"]))
     ref = build_predictor({"name": "irt"}).fit(ds.restrict(["bench0", "bench1"]))
     assert np.allclose(off.predict_batch(inputs, ev), ref.predict_batch(inputs, ev))
+
+
+def test_irt_item_lr_contracts(ds, tmp_path):
+    """Item amortisation + subject regression: batch = single, incremental = fresh, serialisation."""
+    pred = build_predictor({**ITEM_CFG, "name": "irt_item_lr", "vi": False, "adapt_iters": 300}).fit(ds.restrict(["bench0", "bench1"]))
+    ev = _evidence(ds, 120)
+    inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::97], ds.resp_i[::97])]
+    assert np.allclose(pred.predict_batch(inputs, ev), [pred.predict(list(x), ev) for x in inputs])
+    inp = [ds.subjects[1], ds.items[260]]
+    for n in (10, 60):
+        pred.predict(inp, ev[:n])
+    inc = pred.predict(inp, ev)
+    pred.reset_runtime()
+    assert inc == pytest.approx(pred.predict(inp, ev), abs=1e-5)
+    save_predictor(pred, tmp_path / "predictor.json")
+    assert load_predictor(tmp_path).predict(inp, ev) == pytest.approx(pred.predict(inp, ev))

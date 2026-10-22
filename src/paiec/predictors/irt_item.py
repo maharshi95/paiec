@@ -24,6 +24,7 @@ from ..features.hashing import parse_kv
 from ..features.subject import subject_key
 from .base import Evidence, item_key
 from .irt import IRT
+from .irt_lr import IRTLR
 from .simple import sigmoid
 
 
@@ -31,7 +32,7 @@ class IRTItem(IRT):
     name = "irt_item"
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
-                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var", "vi", "vi_frac")
+                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var", "vi", "vi_frac", "lr_on")
     rp_frac = 0.0
     rp_dim = 64
     rp_seed = 0
@@ -54,6 +55,7 @@ class IRTItem(IRT):
     # sigmoid(eta / kappa), kappa = sqrt(1 + pi * vi_frac * v / 8), v = summed current posterior variances.
     vi = False
     vi_frac = 1.0
+    lr_on = False           # subject-descriptor regression (IRTItemLR): delta_s ~ N(x_s . w_b, var_r)
 
     # ---------------- item info (cached, pure) ----------------
     def _poly(self, Z):
@@ -160,7 +162,15 @@ class IRTItem(IRT):
         P = np.array([pidx[o[0]] for o in obs])
         J = np.array([iidx[o[1]] for o in obs])
         y = np.array([o[2] for o in obs])
-        u = np.array([self.subject_prior(s) for s in subj])
+        lr = self.lr_on
+        if lr:
+            X = np.array([self.lr_x(s) for s in subj])
+            var_u = self.lr_var_r * self.lr_rvar_mult * vs
+            Si = np.linalg.inv(self.lr_S * self.lr_wvar_mult * vs)
+            lw = self.lr_wbar.copy()
+            u = X @ lw
+        else:
+            u = np.array([self.subject_prior(s) for s in subj])
         info = self._info(items)
         yh = np.array([x[0] for x in info])
         nP, nJ = len(u), len(yh)
@@ -211,8 +221,12 @@ class IRTItem(IRT):
         t2 = [tv for _, tv in slices] if use_rp else []
         # item-level map from obs to the items' group contributions: shared(j) = sum a * g
         beta, delta, eps = self.mu_beta, u.copy(), np.zeros(nJ)
+        Apost = Si if lr else None
         if warm:
             beta = warm["beta"][0]
+            if lr:
+                lw = warm["lr_w"].copy()
+                u = X @ lw
             for sk, kk in pidx.items():
                 if sk in warm["delta"]:
                     delta[kk] = warm["delta"][sk][0]
@@ -269,6 +283,13 @@ class IRTItem(IRT):
             hP = np.bincount(P, wt, nP) + 1 / var_u
             delta += (np.bincount(P, y - mu, nP) - (delta - u) / var_u) / hP
             vdel_ = 1 / hP
+            if lr and self.lr_adapt_w:
+                hq = hP - 1 / var_u + 1e-9
+                zs = delta + np.bincount(P, y - mu, nP) / hq
+                wq = 1.0 / (var_u + 1.0 / hq)
+                Apost = X.T @ (X * wq[:, None]) + Si
+                lw = np.linalg.solve(Apost, X.T @ (wq * zs) + Si @ self.lr_wbar)
+                u = X @ lw
             if self.learn_items:
                 mu, wt = lik()
                 h = np.bincount(J, wt, nJ)
@@ -307,6 +328,10 @@ class IRTItem(IRT):
         h = np.bincount(J, wt, nJ)
         vb = 1 / (wt.sum() + 1 / var_b) if self.learn_bench else var_b
         vdel = 1 / (np.bincount(P, wt, nP) + 1 / var_u)
+        if lr:
+            hq = np.bincount(P, wt, nP)
+            xs = np.einsum("ij,jk,ik->i", X, np.linalg.inv(Apost), X)
+            vdel = 1 / (hq + 1 / var_u) + ((1 / var_u) / (hq + 1 / var_u)) ** 2 * xs
         # group posterior variances (diagonal), shared-part variance per labeled item
         vg = np.ones(nG)
         shv = np.zeros(nJ)
@@ -320,6 +345,7 @@ class IRTItem(IRT):
                "delta": {sk: (float(delta[kk]), float(vdel[kk])) for sk, kk in pidx.items()},
                "eps": {ik: float(eps[kk]) for ik, kk in iidx.items()},
                "g": {t: (float(g[gi]), float(vg[gi])) for t, gi in gidx.items()},
+               **({"lr_w": lw, "lr_S": np.linalg.inv(Apost)} if lr else {}),
                "gs2": {bk: float(s2[bi]) for bi, bk in enumerate(bkeys)}, "var_e": float(var_e)}
         if use_rp:
             pv = np.concatenate([np.full(sl.stop - sl.start, tv) for (sl, _), tv in zip(slices, t2)])
@@ -362,10 +388,23 @@ class IRTItem(IRT):
             st = fits.get(i.get("benchmark_id", ""))
             bm, bv = st["beta"] if st else (self.mu_beta, self.var_beta * vs)
             dm, dv = st["delta"].get(subject_key(s), (None, None)) if st else (None, None)
-            if dm is None:
+            if dm is None and self.lr_on:
+                x = self.lr_x(s)
+                var_r = self.lr_var_r * self.lr_rvar_mult * vs
+                w, S = (st["lr_w"], st["lr_S"]) if st else (self.lr_wbar, self.lr_S * self.lr_wvar_mult * vs)
+                dm, dv = float(x @ w), var_r + float(x @ S @ x)
+            elif dm is None:
                 dm, dv = self.subject_prior(s), self.var_u * vs
             im, iv = st["d"].get(item_key(i), (None, None)) if st else (None, None)
             if im is None:
                 im, iv = self._item_post(st, infos[k])
             m[k], v[k] = bm + dm - im, bv + dv + iv
         return sigmoid(m / np.sqrt(1 + np.pi * v / 8)) if self.marginalize else sigmoid(m)
+
+
+class IRTItemLR(IRTItem, IRTLR):
+    """Online item amortisation + per-benchmark subject-descriptor regression (fit as IRTLR)."""
+    name = "irt_item_lr"
+    FIT_AS = None
+    lr_on = True
+    RUNTIME_PARAMS = IRTItem.RUNTIME_PARAMS + IRTLR.RUNTIME_PARAMS

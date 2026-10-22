@@ -1,0 +1,3 @@
+name: subj__lr
+base: configs/research/champion.yaml
+predictor: {name: irt_lr, item_target: absolute, beta_var_mult: 4.0}

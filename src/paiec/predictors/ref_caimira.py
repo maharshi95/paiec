@@ -108,7 +108,7 @@ class RefCaimira(Predictor):
                 if bad >= self.patience:
                     break
         mod.load_state_dict(best_state)
-        self.W = {k: v.numpy().astype(np.float32) for k, v in mod.state_dict().items()}
+        self.W = {k: v.detach().cpu().numpy().astype(np.float32) for k, v in mod.state_dict().items()}
         self.val_nll = best
         return self
 

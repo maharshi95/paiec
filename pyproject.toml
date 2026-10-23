@@ -3,11 +3,12 @@ name = "paiec"
 version = "0.0.1"
 description = "Experiments for the Predictive AI Evaluation Competition (NeurIPS 2026)"
 requires-python = ">=3.10"
-dependencies = ["numpy", "pandas", "pyarrow", "huggingface_hub"]
+dependencies = ["numpy", "pandas", "pyarrow", "pyyaml", "huggingface_hub>=0.25"]
 
 [project.optional-dependencies]
 ml = ["torch", "scikit-learn", "lightgbm"]
 dev = ["pytest", "ruff"]
+report = ["matplotlib"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

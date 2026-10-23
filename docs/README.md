@@ -1,7 +1,10 @@
 # Docs index (one topic per doc; update the doc that owns the topic)
 
+**New here? Read [getting-started.md](getting-started.md) first** (setup, data, scoring, writing a model).
+
 | doc | owns | update when |
 |---|---|---|
+| `getting-started.md` | onboarding: environment, published split, protocol configs, predictor/policy how-to | the onboarding path changes |
 | `competition.md` | task, rules, deadlines, links | the organizers change something |
 | `evaluation.md` | hosted metric (Brier ALC), pools, budgets, streaming acquisition protocol | protocol facts change |
 | `submission-format.md` | ZIP layout, `predict` / `acquisition_function` I/O, `labeled` / `context` semantics, hosted call flow (sourced) | interface facts are learned |

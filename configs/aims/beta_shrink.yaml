@@ -1,0 +1,5 @@
+# Beta shrinkage to benchmark + subject-history prior
+name: aims_beta_shrink
+base: configs/aims/base.yaml
+predictor: {name: beta_shrink}
+acquisition: {name: accept_all}

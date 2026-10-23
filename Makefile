@@ -1,7 +1,7 @@
 export PYTHONPATH := src
-CONFIG ?= configs/irt.yaml
+CONFIG ?= configs/aims/irt.yaml
 .PHONY: data test lint run board zip time
-data:  ; python scripts/download_data.py --out data/raw
+data:  ; python scripts/download_data.py --split
 test:  ; python -m pytest -q
 lint:  ; ruff check .
 run:   ; python scripts/run.py --config $(CONFIG)

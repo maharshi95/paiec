@@ -1,0 +1,5 @@
+# constant 0.5 (sanity floor: ALC 0.25)
+name: aims_constant
+base: configs/aims/base.yaml
+predictor: {name: constant}
+acquisition: {name: accept_all}

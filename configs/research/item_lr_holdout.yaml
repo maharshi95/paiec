@@ -1,0 +1,5 @@
+# Milestone hold-out check of the promotion candidate (stack__item_lr: dev Δ −0.0066 ± 0.0012 vs R_champion_dev).
+name: R_item_lr_holdout
+base: configs/research/holdout.yaml
+predictor: {name: irt_item_lr, item_target: absolute, beta_var_mult: 4.0, rp_frac: 0.4, rp_dim: 32, kv_frac: 0.3, eb_nu: 10, lr_wvar_mult: 2.0}
+acquisition: {name: uncertainty, radius: 0.15}

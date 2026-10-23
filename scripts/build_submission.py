@@ -18,7 +18,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from paiec.config import load_config
-from paiec.data.dataset import load_dataset
+from paiec.data.dataset import load_from_config
 from paiec.predictors import build_predictor
 from paiec.runtime import POLICY_FILE, STATE_FILE, save_predictor
 
@@ -26,9 +26,7 @@ from paiec.runtime import POLICY_FILE, STATE_FILE, save_predictor
 def build(cfg, out_zip: Path, ds=None) -> Path:
     if ds is None:
         d = cfg["data"]
-        ds = load_dataset(d["root"], d["benchmarks"], d["binarize"], d["cache_dir"],
-                          max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"),
-                          prefer_seen_from=d.get("prefer_seen_from"))
+        ds = load_from_config(d)
     benches = [b for b in (cfg["data"]["benchmarks"] or ds.benchmarks()) if b in ds.benchmarks()]
     pred = build_predictor(cfg["predictor"]).fit(ds.restrict(benches))
     stage = out_zip.with_suffix("")

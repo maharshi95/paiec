@@ -1,5 +1,7 @@
 # Using the research harness
 
+First time here? Start with [getting-started.md](getting-started.md) and the `configs/aims/` protocol.
+
 The design rationale is in [harness-plan.md](harness-plan.md). This page covers day-to-day use.
 
 ## Run, sweep, compare
@@ -26,9 +28,12 @@ Use `pairs.csv` for paired comparisons. Runs with the same `cv.split_seed` and `
 ## Config keys (defaults in `src/paiec/config.py`)
 | Key | Meaning |
 |---|---|
-| `data.benchmarks` | benchmarks loaded (train + test universe) |
+| `data.root` | a measurement-db-layout directory, or a list of them (e.g. `[data/aims/train, data/aims/val]`) |
+| `data.benchmarks` | benchmarks loaded (train + test universe); null = everything under `data.root` |
 | `data.binarize` | `{mode: exclude}` drops non-binary benchmarks; `{mode: threshold, threshold: t}` uses y = grade ≥ t; `per_benchmark: {mmdocrag: 0.8, matharena: exclude}` |
-| `cv.test_benchmarks` | LOBO folds (default: all loaded) |
+| `cv.test_benchmarks` | folds: a benchmark name (LOBO) or a list held out together (default: every loaded benchmark) |
+| `cv.train_benchmarks` | training pool per fold, minus the fold: a list, a data directory (every benchmark in it), or null (all loaded) |
+| `cv.eval_seen_from` | score only subjects whose model identity appears in these benchmarks |
 | `cv.seeds`, `cv.split_seed` | candidate order and trial draws; fixed pools |
 | `cv.max_subjects_per_benchmark` | mimic platform subject sampling, or speed up |
 | `cv.max_eval_items_per_pair` | speed. Base config uses 200; set `null` for a final number |

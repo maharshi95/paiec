@@ -112,21 +112,84 @@ def _binarize(name, values, cfg, scale=None):
     return y, finite, f"threshold@{t}"
 
 
+def find_benchmarks(root) -> dict:
+    """{benchmark slug: its formatted_tables dir} over one root or a list of roots (e.g. the train and
+    val downloads). A slug present under several roots resolves to the first."""
+    roots = [root] if isinstance(root, (str, Path)) else list(root)
+    found = {}
+    for r in map(Path, roots):
+        for p in sorted(r.iterdir()):
+            if (p / "formatted_tables").is_dir():
+                found.setdefault(p.name, p / "formatted_tables")
+    return found
+
+
+def read_revision(root) -> str:
+    """Upstream measurement-db revision (the REVISION file); roots that disagree are joined with '+'."""
+    roots = [root] if isinstance(root, (str, Path)) else list(root)
+    revs = [(Path(r) / "REVISION").read_text().strip() for r in roots if (Path(r) / "REVISION").exists()]
+    return "+".join(dict.fromkeys(revs))
+
+
+def seen_identities(tables: dict, prefer_seen_from) -> set:
+    """Canonical model identities of every subject in the `prefer_seen_from` benchmarks."""
+    import pandas as pd
+    from ..features.subject import subject_identity
+    seen = set()
+    for ref in prefer_seen_from or []:
+        if ref in tables and (tables[ref] / "subjects.parquet").exists():
+            for r in pd.read_parquet(tables[ref] / "subjects.parquet").itertuples(index=False):
+                seen.add(subject_identity({k: _s(getattr(r, k, None)) for k in SUBJECT_FIELDS}))
+    return seen
+
+
+def cap_subjects(slug, subject_col, sub_tab, seen_ids, max_responses) -> np.ndarray:
+    """Mask over responses keeping a seeded random subset of subjects with <= max_responses responses
+    in total (each kept subject keeps all of its responses); subjects in `seen_ids` go first."""
+    from ..features.subject import subject_identity
+    if not max_responses or len(subject_col) <= max_responses:
+        return np.ones(len(subject_col), bool)
+    counts = subject_col.value_counts()
+    seen = {r.subject_id for r in sub_tab.itertuples(index=False)
+            if subject_identity({k: _s(getattr(r, k, None)) for k in SUBJECT_FIELDS}) in seen_ids}
+    order = sorted(counts.index, key=lambda x: (x not in seen, hashlib.md5(f"{slug}|{x}".encode()).hexdigest()))
+    keep_s, total = set(), 0
+    for sid in order:
+        if total and total + counts[sid] > max_responses:
+            continue
+        keep_s.add(sid)
+        total += counts[sid]
+    return subject_col.isin(keep_s).values
+
+
+def load_from_config(d: dict, **kw) -> Dataset:
+    """load_dataset from a config's `data` section."""
+    return load_dataset(d["root"], d.get("benchmarks"), d.get("binarize"), d.get("cache_dir", "data/processed"),
+                        max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"),
+                        prefer_seen_from=d.get("prefer_seen_from"), cap_overrides=d.get("cap_overrides"), **kw)
+
+
 def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="data/processed",
-                 use_cache=True, max_responses=None, max_item_chars=None, prefer_seen_from=None) -> Dataset:
-    """max_responses: cap per benchmark by keeping a seeded random subset of *subjects* (each kept
+                 use_cache=True, max_responses=None, max_item_chars=None, prefer_seen_from=None,
+                 cap_overrides=None) -> Dataset:
+    """root: a measurement-db-layout directory ({benchmark}/formatted_tables/*.parquet) or a list of
+    them. max_responses: cap per benchmark by keeping a seeded random subset of *subjects* (each kept
     pair keeps all of its items). max_item_chars: truncate stored item text (memory; featurizers
     read at most a few thousand characters anyway). prefer_seen_from: benchmarks whose model identities
-    are kept first when capping (e.g. the six reference benchmarks), so capped benchmarks retain them."""
+    are kept first when capping (e.g. the six reference benchmarks), so capped benchmarks retain them.
+    cap_overrides: {benchmark: cap or None (uncapped)} replacing max_responses for those benchmarks."""
     import pandas as pd
 
-    root = Path(root)
     binarize = binarize or {"mode": "exclude"}
-    revision = (root / "REVISION").read_text().strip() if (root / "REVISION").exists() else ""
-    slugs = sorted(p.name for p in root.iterdir() if (p / "formatted_tables").is_dir())
+    revision = read_revision(root)
+    tables = find_benchmarks(root)
+    slugs = sorted(tables)
     if benchmarks:
         slugs = [s for s in slugs if s in benchmarks]
-    key = hashlib.sha1(json.dumps(["v3", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from], sort_keys=True).encode()).hexdigest()[:12]
+    key_parts = ["v3", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from]
+    if cap_overrides:   # appended only when set, so existing caches keep their keys
+        key_parts.append(cap_overrides)
+    key = hashlib.sha1(json.dumps(key_parts, sort_keys=True).encode()).hexdigest()[:12]
     cache = Path(cache_dir) / f"dataset_{key}.pkl"
     if use_cache and cache.exists():
         with open(cache, "rb") as f:
@@ -135,16 +198,10 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
     subjects, subject_ids, sidx = [], [], {}
     items, item_ids, item_bench, iidx = [], [], [], {}
     rs, ri, ry, bench_names = [], [], [], []
-    from ..features.subject import subject_identity
-    seen_ids = set()
-    for ref in prefer_seen_from or []:
-        f = root / ref / "formatted_tables" / "subjects.parquet"
-        if f.exists():
-            for r in pd.read_parquet(f).itertuples(index=False):
-                seen_ids.add(subject_identity({k: _s(getattr(r, k, None)) for k in SUBJECT_FIELDS}))
+    seen_ids = seen_identities(tables, prefer_seen_from)
     rules = {}
     for slug in slugs:
-        t = root / slug / "formatted_tables"
+        t = tables[slug]
         if not all((t / f"{x}.parquet").exists() for x in TABLES):
             continue   # partially downloaded
         cat = pd.read_parquet(t / "benchmarks.parquet").iloc[0]
@@ -164,19 +221,9 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
                 subject_ids.append(row.subject_id)
         resp = resp[keep]
         y = y[keep]
-        if max_responses and len(resp) > max_responses:
-            counts = resp.subject_id.value_counts()
-            sub_tab = pd.read_parquet(t / "subjects.parquet")
-            seen = {r.subject_id for r in sub_tab.itertuples(index=False)
-                    if subject_identity({k: _s(getattr(r, k, None)) for k in SUBJECT_FIELDS}) in seen_ids}
-            order = sorted(counts.index, key=lambda x: (x not in seen, hashlib.md5(f"{slug}|{x}".encode()).hexdigest()))
-            keep_s, total = set(), 0
-            for sid in order:
-                if total and total + counts[sid] > max_responses:
-                    continue
-                keep_s.add(sid)
-                total += counts[sid]
-            m = resp.subject_id.isin(keep_s).values
+        cap = (cap_overrides or {}).get(slug, max_responses)
+        if cap and len(resp) > cap:
+            m = cap_subjects(slug, resp.subject_id, pd.read_parquet(t / "subjects.parquet"), seen_ids, cap)
             resp, y = resp[m], y[m]
         # a visible item is (item, interactors): interactors live on responses and are part of the input
         inter = resp.interactors.fillna("").astype(str).values

@@ -39,6 +39,16 @@ Outputs in `runs/<name>/metrics.json`:
 | cost | 5–10 min per run on 1 CPU | one Slurm CPU job per variant (8 CPUs, 60 GB) |
 | weakness | 5 test benchmarks: high variance, easy to overfit | hyperparameters tuned on the same folds they are reported on |
 
+## Published split (`configs/aims/`, HF `mgor/aims-measurement-db-{train,val}`)
+The ref6-seen dev split below, exported by `scripts/export_split.py` so anyone can use it without the
+full measurement-db: **train** = the dev universe minus the 30 dev eval benchmarks (166), **val** = those
+30, in the same 5 groups. Loading the export with `configs/aims/base.yaml` gives the same `Dataset` as
+`configs/split_seen/dev_base.yaml` on the full db (verified 2026-10-22). Two protocols use it:
+- `configs/aims/base.yaml`: fit on train only, evaluate every val group (the standard for outside users);
+- `configs/aims/irt_cv.yaml` (`cv.train_benchmarks: null`): fit on train + the other val groups, which is
+  the research loop's dev protocol and reproduces `R_champion_dev`.
+The hold-out is in neither split.
+
 ## Current default protocol: ref6-seen split (`configs/split_seen/`)
 Same mechanics as below, but eval benchmarks are chosen for *models seen in ref6* and diversity, with a leakage guard (`benchmark-selection.md`). Eval pairs are restricted to ref6-seen models (`cv.eval_seen_from`). Dev has 30 benchmarks in 5 folds; the hold-out has 12. Earlier `configs/split/` numbers (random-model panel) are not comparable.
 

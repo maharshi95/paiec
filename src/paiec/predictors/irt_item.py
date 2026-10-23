@@ -33,7 +33,7 @@ class IRTItem(IRT):
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
                                            "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var", "vi", "vi_frac", "lr_on",
-                                           "eb_u_nu")
+                                           "eb_u_nu", "vi_parts")
     rp_frac = 0.0
     rp_dim = 64
     rp_seed = 0
@@ -60,6 +60,7 @@ class IRTItem(IRT):
     # online EB for the per-benchmark pair-ability variance (as irt_h nu_u): EM with pseudo-count eb_u_nu (pairs)
     # toward the trained var_u (or var_r with lr_on), clipped to [0.05, 20] x that value. 0 = fixed.
     eb_u_nu = 0.0
+    vi_parts = "bud"        # which posterior variances enter the VI expectation: b(eta offset), u(pair), d(item)
 
     # ---------------- item info (cached, pure) ----------------
     def _poly(self, Z):
@@ -267,7 +268,10 @@ class IRTItem(IRT):
             if not self.vi:
                 mu = sigmoid(eta)
                 return mu, mu * (1 - mu)
-            kap = np.sqrt(1 + np.pi * self.vi_frac * ((vb_ if self.learn_bench else 0.0) + vdel_[P] + vd_[J]) / 8)
+            vp = self.vi_parts
+            v = ((vb_ if self.learn_bench and "b" in vp else 0.0) + (vdel_[P] if "u" in vp else 0.0)
+                 + (vd_[J] if "d" in vp else 0.0))
+            kap = np.sqrt(1 + np.pi * self.vi_frac * v / 8)
             mu = sigmoid(eta / kap)
             return mu, mu * (1 - mu) / kap
 

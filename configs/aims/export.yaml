@@ -1,0 +1,5 @@
+# Source config for scripts/export_split.py (the published train/val split): the seen-dev universe and folds
+# minus the excluded benchmarks (docs/todo.md explains each exclusion).
+base: configs/split_seen/dev_base.yaml
+data:
+  exclude: [scale_mrt]

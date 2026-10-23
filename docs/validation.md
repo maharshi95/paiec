@@ -42,11 +42,13 @@ Outputs in `runs/<name>/metrics.json`:
 ## Published split (`configs/aims/`, HF `mgor/aims-measurement-db-{train,val}`)
 The ref6-seen dev split below, exported by `scripts/export_split.py` so anyone can use it without the
 full measurement-db: **train** = the dev universe minus the 30 dev eval benchmarks (166), **val** = those
-30, in the same 5 groups. Loading the export with `configs/aims/base.yaml` gives the same `Dataset` as
-`configs/split_seen/dev_base.yaml` on the full db (verified 2026-10-22). Two protocols use it:
+30 minus `scale_mrt` (29, in the same 5 groups; fold 4 has 5). `scale_mrt` is excluded because half of its labels
+are mislabelled by the mixed-scale binarisation (`todo.md`). Loading the export with `configs/aims/base.yaml` gives
+the same `Dataset` as `configs/split_seen/dev_base.yaml` on the full db **minus `scale_mrt`** (verified 2026-10-22, before
+the exclusion), so `split_seen` and `configs/aims` numbers differ by that one benchmark. Two protocols use it:
 - `configs/aims/base.yaml`: fit on train only, evaluate every val group (the standard for outside users);
 - `configs/aims/irt_cv.yaml` (`cv.train_benchmarks: null`): fit on train + the other val groups, which is
-  the research loop's dev protocol and reproduces `R_champion_dev`.
+  the research loop's dev protocol (it reproduced `R_champion_dev` exactly before `scale_mrt` was excluded).
 The hold-out is in neither split.
 
 ## Current default protocol: ref6-seen split (`configs/split_seen/`)

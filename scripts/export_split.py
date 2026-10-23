@@ -1,10 +1,11 @@
 """Export the local train/val split as two measurement-db-layout datasets (and optionally push them to HF).
 
-    python scripts/export_split.py --config configs/split_seen/dev_base.yaml --out /fs/clip-scratch/mgor/aims-split
-    python scripts/export_split.py --config configs/split_seen/dev_base.yaml --out ... --push   # private repos
+    python scripts/export_split.py --out /fs/clip-scratch/mgor/aims-split
+    python scripts/export_split.py --out ... --push   # private repos; also deletes remote files removed locally
     python scripts/export_split.py --root data/mdb --out data/aims   # rebuild data/aims/{train,val} from a local db
 
-From the config's universe (`data.benchmarks`, which already excludes the locked hold-out):
+The default config, configs/aims/export.yaml, is the seen-dev split minus `data.exclude` (docs/todo.md).
+From the config's universe (`data.benchmarks`, which already excludes the locked hold-out, minus `data.exclude`):
   val   = the benchmarks of `cv.test_benchmarks` (5 grouped folds; fold ids go to split.json),
   train = every other benchmark.
 Each benchmark keeps the measurement-db layout ({benchmark}/formatted_tables/{benchmarks,subjects,items,
@@ -109,7 +110,9 @@ Preprocessing relative to upstream (the paiec loader's settings for this split):
 - graded scales without declared bounds get the full upstream observed `min`/`max` written into
   `response_scale` (`pinned_bounds` in `split.json`), so binarisation matches the full data;
 - withheld benchmarks and benchmarks with no binarisable responses dropped; the 12 locked hold-out
-  benchmarks of the paiec harness are in neither split.
+  benchmarks of the paiec harness are in neither split;
+- excluded on purpose: {excluded}. A mixed-scale benchmark (0/1 grades plus 1-5 or 0-100 ratings) is
+  binarised against its whole observed range, which mislabels the small-range part; see `docs/todo.md` in the repo.
 {folds}
 ## Use
 
@@ -142,14 +145,14 @@ def card(split, meta, rows):
     head = CARD.format(split=split, other_repo=REPOS[other], upstream=UPSTREAM, revision=meta["upstream_revision"],
                        n=len(rows), total=sum(r["responses"] for r in rows), binarize=json.dumps(meta["binarize"]),
                        cap=meta["max_responses"], folds=FOLDS_NOTE if split == "val" else "", repo=REPOS[split],
-                       example=rows[0]["benchmark"])
+                       example=rows[0]["benchmark"], excluded=", ".join(f"`{b}`" for b in meta.get("excluded", [])) or "none")
     body = [f"| {r['benchmark']} | {r['subjects']} | {r['items']:,} | {r['responses']:,} | {r['rule']} |" for r in rows]
     return head + "\n".join(body) + "\n"
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/split_seen/dev_base.yaml")
+    ap.add_argument("--config", default="configs/aims/export.yaml")
     ap.add_argument("--out", required=True)
     ap.add_argument("--root", help="measurement-db directory (default: the config's data.root)")
     ap.add_argument("--push", action="store_true", help="upload to the HF repos (created private if missing)")
@@ -161,7 +164,8 @@ def main():
     folds = [[f] if isinstance(f, str) else list(f) for f in cfg["cv"]["test_benchmarks"]]
     val = [b for f in folds for b in f]
     tables = find_benchmarks(d["root"])
-    universe = [b for b in sorted(tables) if b in d["benchmarks"]]
+    exclude = set(d.get("exclude") or [])
+    universe = [b for b in sorted(tables) if b in d["benchmarks"] and b not in exclude]
     split = {"train": [b for b in universe if b not in val], "val": [b for b in universe if b in val]}
     seen_ids = seen_identities(tables, d.get("prefer_seen_from"))
     revision = (Path(d["root"]) / "REVISION").read_text().strip()
@@ -185,7 +189,7 @@ def main():
         kept = [r["benchmark"] for r in rows]
         meta = {"split": name, "upstream": UPSTREAM, "upstream_revision": revision, "source_config": a.config,
                 "paiec_commit": sha, "binarize": d["binarize"], "max_responses": d.get("max_responses"), "cap_overrides": d.get("cap_overrides"),
-                "prefer_seen_from": d.get("prefer_seen_from"), "benchmarks": kept,
+                "prefer_seen_from": d.get("prefer_seen_from"), "excluded": sorted(exclude), "benchmarks": kept,
                 "folds": [[b for b in f if b in kept] for f in folds] if name == "val" else None, "stats": rows}
         (root / "REVISION").write_text(revision + "\n")
         (root / "split.json").write_text(json.dumps(meta, indent=1))
@@ -197,6 +201,7 @@ def main():
         for name, repo in REPOS.items():
             api.create_repo(repo, repo_type="dataset", private=True, exist_ok=True)
             api.upload_folder(repo_id=repo, repo_type="dataset", folder_path=str(out / name),
+                              delete_patterns=["*/formatted_tables/*"],   # drop remote benchmarks removed locally
                               commit_message=f"export {name} split (paiec {sha})")
             print(f"pushed {out / name} -> https://huggingface.co/datasets/{repo}")
 

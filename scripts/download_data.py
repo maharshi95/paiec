@@ -15,7 +15,7 @@ core tables total ~14.8 GB, traces ~108 GB (skipped unless --traces).
 
     python scripts/download_data.py --all                                  # every public benchmark
     python scripts/download_data.py --benchmarks matharena mmdocrag        # a list
-    python scripts/download_data.py --config configs/split_seen/dev_base.yaml --root data/mdb \
+    python scripts/download_data.py --config configs/aims/export.yaml --root data/mdb \
         --revision 54074453da7b9911be0f48e4c560be547bc84d21               # a config's universe (rebuild the split)
     python scripts/download_data.py --query "n_subjects >= 10 and response_type == 'binary'"
     python scripts/download_data.py --all --max-mb 1000                    # skip benchmarks > 1 GB
@@ -37,12 +37,17 @@ SPLIT_REPOS = {"train": "mgor/aims-measurement-db-train", "val": "mgor/aims-meas
 
 
 def download_split(which, out, revision=None, workers=8):
-    from huggingface_hub import snapshot_download
+    from huggingface_hub import HfApi, snapshot_download
     for name in SPLIT_REPOS if which == "all" else [which]:
         path = snapshot_download(SPLIT_REPOS[name], repo_type="dataset", revision=revision,
                                  local_dir=Path(out) / name, max_workers=workers)
-        n = sum(1 for p in Path(path).iterdir() if (p / "formatted_tables").is_dir())
-        print(f"{SPLIT_REPOS[name]} -> {path} ({n} benchmarks)")
+        local = {p.name for p in Path(path).iterdir() if (p / "formatted_tables").is_dir()}
+        remote = {f.split("/")[0] for f in HfApi().list_repo_files(SPLIT_REPOS[name], repo_type="dataset", revision=revision)
+                  if "/formatted_tables/" in f}
+        print(f"{SPLIT_REPOS[name]} -> {path} ({len(remote)} benchmarks)")
+        if local - remote:   # snapshot_download never deletes: benchmarks removed from the split stay on disk
+            print(f"  warning: stale local benchmarks no longer in the split: {sorted(local - remote)}; "
+                  f"delete {path}/<name> (configs/aims/base.yaml ignores the excluded ones)")
 
 
 def select(root, benchmarks, query, all_, max_mb):
@@ -82,7 +87,8 @@ def main():
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
         from paiec.config import load_config
-        a.benchmarks = load_config(a.config)["data"]["benchmarks"]
+        d = load_config(a.config)["data"]
+        a.benchmarks = [b for b in d["benchmarks"] if b not in set(d.get("exclude") or [])]
     slugs = select(a.root, a.benchmarks, a.query, a.all, a.max_mb)
     tables = CORE + (("traces",) if a.traces else ())
     jobs = [(s, t) for s in slugs for t in tables]

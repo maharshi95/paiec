@@ -247,6 +247,33 @@ def test_irt_item_isolates_failing_benchmark(ds, monkeypatch):
     assert np.isfinite(p).all() and ((p > 0) & (p < 1)).all()
 
 
+def _write_bench(root, slug):
+    """Tiny measurement-db-layout benchmark: 3 subjects x 4 items, binary responses."""
+    import pandas as pd
+    t = root / slug / "formatted_tables"
+    t.mkdir(parents=True)
+    pd.DataFrame([{"benchmark_id": slug, "release": "public", "response_scale": '{"kind":"binary"}'}]).to_parquet(t / "benchmarks.parquet")
+    pd.DataFrame([{"subject_id": f"s{k}", "normalized_name": f"m{k}"} for k in range(3)]).to_parquet(t / "subjects.parquet")
+    pd.DataFrame([{"item_id": f"i{j}", "content": f"item {j}", "item_features": ""} for j in range(4)]).to_parquet(t / "items.parquet")
+    pd.DataFrame([{"subject_id": f"s{k}", "item_id": f"i{j}", "interactors": "", "response": float((k + j) % 2)}
+                  for k in range(3) for j in range(4)]).to_parquet(t / "responses.parquet")
+
+
+def test_load_dataset_multi_root_and_exclude(tmp_path):
+    """A list of roots is one universe; `exclude` drops benchmarks even when they are on disk (stale downloads)."""
+    from paiec.data.dataset import find_benchmarks, load_dataset
+    a, b = tmp_path / "train", tmp_path / "val"
+    for root, slug in ((a, "bench_a"), (a, "bench_b"), (b, "bench_c")):
+        _write_bench(root, slug)
+    assert sorted(find_benchmarks([a, b])) == ["bench_a", "bench_b", "bench_c"]
+    kw = {"binarize": {"mode": "exclude"}, "cache_dir": str(tmp_path / "cache")}
+    full = load_dataset([a, b], **kw)
+    assert sorted(full.bench_names) == ["bench_a", "bench_b", "bench_c"] and len(full.resp_y) == 36
+    cut = load_dataset([a, b], exclude=["bench_c"], **kw)
+    assert sorted(cut.bench_names) == ["bench_a", "bench_b"] and len(cut.resp_y) == 24   # not served from the full pickle
+    assert load_dataset([a, b], benchmarks=["bench_a", "bench_c"], exclude=["bench_c"], **kw).bench_names == ["bench_a"]
+
+
 def test_fit_as_shares_parent_fit_cache(ds, tmp_path, monkeypatch):
     from paiec.fitcache import cache_key, fit_cached
     monkeypatch.setenv("PAIEC_FIT_CACHE", str(tmp_path))

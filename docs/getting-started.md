@@ -28,14 +28,14 @@ maintainer (@mgor on HF) for read access. Alternatively, with approved access to
 `aims-foundations/measurement-db`, rebuild byte-identical files locally:
 ```bash
 hf auth login                                  # with approved access to aims-foundations/measurement-db
-python scripts/download_data.py --config configs/split_seen/dev_base.yaml --root data/mdb \
-    --revision 54074453da7b9911be0f48e4c560be547bc84d21    # 196 benchmarks, ~7 GB, ~2 min
+python scripts/download_data.py --config configs/aims/export.yaml --root data/mdb \
+    --revision 54074453da7b9911be0f48e4c560be547bc84d21    # 195 benchmarks, ~7 GB, ~2 min
 python scripts/export_split.py --root data/mdb --out data/aims   # ~5 min -> data/aims/{train,val}, identical files
 ```
 | | HF dataset | benchmarks | responses |
 |---|---|---|---|
 | train | `mgor/aims-measurement-db-train` | 166 (includes the 6 reference benchmarks) | 12.8M |
-| val | `mgor/aims-measurement-db-val` | 30, in 5 groups of 6 | 1.7M |
+| val | `mgor/aims-measurement-db-val` | 29, in 5 groups of 5–6 | 1.6M |
 
 Each benchmark directory has the upstream measurement-db layout and schema
 (`{benchmark}/formatted_tables/{benchmarks,subjects,items,responses}.parquet`; columns are listed in
@@ -49,8 +49,9 @@ measurement-db (revision `54074453`), keeping:
 - the items that have a kept response, and the full subjects table.
 
 Loading the export with `configs/aims/base.yaml` gives exactly the same `Dataset` as loading the full
-measurement-db with `configs/split_seen/dev_base.yaml`. So numbers on the two are comparable, and
-`configs/aims/irt_cv.yaml` reproduces the research loop's `R_champion_dev`.
+measurement-db with `configs/split_seen/dev_base.yaml` **minus `scale_mrt`**, which is excluded from the published
+split (half of its labels are wrong under the mixed-scale binarisation; see `todo.md`). So `configs/aims` numbers
+and the research loop's `split_seen` numbers differ by that one benchmark and are not directly comparable.
 
 **Why benchmark-level splits.** The hosted test asks about benchmarks that were never released. A
 random row split would leak each benchmark's base rate and item difficulties, and local numbers would

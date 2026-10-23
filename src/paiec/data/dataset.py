@@ -166,18 +166,20 @@ def load_from_config(d: dict, **kw) -> Dataset:
     """load_dataset from a config's `data` section."""
     return load_dataset(d["root"], d.get("benchmarks"), d.get("binarize"), d.get("cache_dir", "data/processed"),
                         max_responses=d.get("max_responses"), max_item_chars=d.get("max_item_chars"),
-                        prefer_seen_from=d.get("prefer_seen_from"), cap_overrides=d.get("cap_overrides"), **kw)
+                        prefer_seen_from=d.get("prefer_seen_from"), cap_overrides=d.get("cap_overrides"),
+                        exclude=d.get("exclude"), **kw)
 
 
 def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="data/processed",
                  use_cache=True, max_responses=None, max_item_chars=None, prefer_seen_from=None,
-                 cap_overrides=None) -> Dataset:
+                 cap_overrides=None, exclude=None) -> Dataset:
     """root: a measurement-db-layout directory ({benchmark}/formatted_tables/*.parquet) or a list of
     them. max_responses: cap per benchmark by keeping a seeded random subset of *subjects* (each kept
     pair keeps all of its items). max_item_chars: truncate stored item text (memory; featurizers
     read at most a few thousand characters anyway). prefer_seen_from: benchmarks whose model identities
     are kept first when capping (e.g. the six reference benchmarks), so capped benchmarks retain them.
-    cap_overrides: {benchmark: cap or None (uncapped)} replacing max_responses for those benchmarks."""
+    cap_overrides: {benchmark: cap or None (uncapped)} replacing max_responses for those benchmarks.
+    exclude: benchmarks to skip even if present under root (e.g. a stale download of a since-removed benchmark)."""
     import pandas as pd
 
     binarize = binarize or {"mode": "exclude"}
@@ -186,9 +188,13 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
     slugs = sorted(tables)
     if benchmarks:
         slugs = [s for s in slugs if s in benchmarks]
+    if exclude:
+        slugs = [s for s in slugs if s not in set(exclude)]
     key_parts = ["v3", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from]
     if cap_overrides:   # appended only when set, so existing caches keep their keys
         key_parts.append(cap_overrides)
+    if exclude:
+        key_parts.append({"exclude": sorted(exclude)})
     key = hashlib.sha1(json.dumps(key_parts, sort_keys=True).encode()).hexdigest()[:12]
     cache = Path(cache_dir) / f"dataset_{key}.pkl"
     if use_cache and cache.exists():

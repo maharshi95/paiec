@@ -39,7 +39,7 @@ python scripts/run.py --config configs/aims/irt_item_lr.yaml      # champion
 python scripts/compare.py runs/aims_empirical_mean runs/aims_irt_item_lr  # paired Δ, 95% CI
 ```
 
-A full-split run loads all 196 benchmarks. It needs about 40–60 GB of RAM and takes 15–30 min on 8 CPUs
+A full-split run loads all 195 benchmarks. It needs about 40–60 GB of RAM and takes 15–30 min on 8 CPUs
 (most of that is the first data load and the model fit, which are cached). Each run writes
 `runs/<name>/{config.yaml, metrics.json, pairs.csv}`.
 
@@ -54,15 +54,15 @@ manual review. There are two ways to get them:
 
 ```bash
 hf auth login                                  # with approved access to aims-foundations/measurement-db
-python scripts/download_data.py --config configs/split_seen/dev_base.yaml --root data/mdb \
-    --revision 54074453da7b9911be0f48e4c560be547bc84d21    # 196 benchmarks, ~7 GB, ~2 min
+python scripts/download_data.py --config configs/aims/export.yaml --root data/mdb \
+    --revision 54074453da7b9911be0f48e4c560be547bc84d21    # 195 benchmarks, ~7 GB, ~2 min
 python scripts/export_split.py --root data/mdb --out data/aims   # ~5 min -> data/aims/{train,val}, identical files
 ```
 
 | | HF dataset | benchmarks | responses | role |
 |---|---|---|---|---|
 | train | [`mgor/aims-measurement-db-train`](https://huggingface.co/datasets/mgor/aims-measurement-db-train) | 166 | 12.8M | fit your model here; includes the 6 reference benchmarks |
-| val | [`mgor/aims-measurement-db-val`](https://huggingface.co/datasets/mgor/aims-measurement-db-val) | 30 | 1.7M | scored by the replay, in 5 groups of 6 (`split.json` → `folds`) |
+| val | [`mgor/aims-measurement-db-val`](https://huggingface.co/datasets/mgor/aims-measurement-db-val) | 29 | 1.6M | scored by the replay, in 5 groups of 5–6 (`split.json` → `folds`) |
 
 The two splits share no benchmark, because the hosted test uses benchmarks never released for training.
 Both are subsets of

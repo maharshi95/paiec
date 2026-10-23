@@ -3,14 +3,15 @@ from .irt import IRT
 from .irt_h import IRTH
 from .irt_item import IRTItem, IRTItemLR
 from .irt_lr import IRTLR
+from .irt_mix import IRTItemMix
 from .mirt import MIRT
 from .ref_caimira import RefCaimira
 from .ref_lex import RefLex
 from .simple import BetaShrink, Constant, EmpiricalMean
 from .starter import Starter
 
-PREDICTORS = {cls.name: cls for cls in (Constant, EmpiricalMean, BetaShrink, IRT, IRTH, IRTItem, IRTItemLR, IRTLR, MIRT,
-                                        RefCaimira, RefLex, Starter)}
+PREDICTORS = {cls.name: cls for cls in (Constant, EmpiricalMean, BetaShrink, IRT, IRTH, IRTItem, IRTItemLR, IRTItemMix,
+                                        IRTLR, MIRT, RefCaimira, RefLex, Starter)}
 
 
 def build_predictor(cfg: dict) -> Predictor:

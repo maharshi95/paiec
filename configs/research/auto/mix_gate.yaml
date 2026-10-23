@@ -1,0 +1,18 @@
+# auto: label-count gate between item+VI (A3, vi_frac .5) and item+VI+subject-descriptor regression (irt_item_mix)
+# lr member for pairs with < 4 own labels (B0-B3), plain item+VI from 4 labels on
+name: auto__mix_gate4
+base: configs/research/champion.yaml
+predictor:
+  name: irt_item_mix
+  item_target: absolute
+  beta_var_mult: 4.0
+  rp_frac: 0.3
+  rp_dim: 64
+  kv_frac: 0.2
+  dup_frac: 0.2
+  eb_nu: 10
+  vi: true
+  vi_frac: 0.5
+  lr_wvar_mult: 2.0
+  mix_members: [{lr_on: false}, {lr_on: true}]
+  mix_w: [[0, 0, 0, 1, 1, 1], [1, 1, 1, 0, 0, 0]]

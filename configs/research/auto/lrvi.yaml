@@ -1,0 +1,5 @@
+# auto: item amortisation (A3) + subject-descriptor regression + mean-field VI (vi_frac .5); best structural stack
+name: auto__A3_lr_vi05
+base: configs/research/champion.yaml
+predictor: {name: irt_item_lr, item_target: absolute, beta_var_mult: 4.0, rp_frac: 0.3, rp_dim: 64, kv_frac: 0.2,
+            dup_frac: 0.2, eb_nu: 10, lr_wvar_mult: 2.0, vi: true, vi_frac: 0.5}

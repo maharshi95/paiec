@@ -33,7 +33,7 @@ class IRTItem(IRT):
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
                                            "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var", "vi", "vi_frac", "lr_on",
-                                           "eb_bound")
+                                           "eb_u_nu", "vi_parts", "eb_bound")
     rp_frac = 0.0
     # online-EM scales (eb_nu) stay within [1/eb_bound, eb_bound] x their configured value. Without a bound, a small
     # near-separable benchmark can run away (bigger weights -> bigger scale -> weaker prior) until H is singular.
@@ -60,6 +60,10 @@ class IRTItem(IRT):
     vi = False
     vi_frac = 1.0
     lr_on = False           # subject-descriptor regression (IRTItemLR): delta_s ~ N(x_s . w_b, var_r)
+    # online EB for the per-benchmark pair-ability variance (as irt_h nu_u): EM with pseudo-count eb_u_nu (pairs)
+    # toward the trained var_u (or var_r with lr_on), clipped to [0.05, 20] x that value. 0 = fixed.
+    eb_u_nu = 0.0
+    vi_parts = "bud"        # which posterior variances enter the VI expectation: b(eta offset), u(pair), d(item)
 
     # ---------------- item info (cached, pure) ----------------
     def _poly(self, Z):
@@ -279,10 +283,16 @@ class IRTItem(IRT):
             if not self.vi:
                 mu = sigmoid(eta)
                 return mu, mu * (1 - mu)
-            kap = np.sqrt(1 + np.pi * self.vi_frac * ((vb_ if self.learn_bench else 0.0) + vdel_[P] + vd_[J]) / 8)
+            vp = self.vi_parts
+            v = ((vb_ if self.learn_bench and "b" in vp else 0.0) + (vdel_[P] if "u" in vp else 0.0)
+                 + (vd_[J] if "d" in vp else 0.0))
+            kap = np.sqrt(1 + np.pi * self.vi_frac * v / 8)
             mu = sigmoid(eta / kap)
             return mu, mu * (1 - mu) / kap
 
+        nu_u, var_u0 = float(self.eb_u_nu), var_u
+        if warm and nu_u > 0 and warm.get("var_u"):
+            var_u = warm["var_u"]
         iters = int(self.item_iters) or self.adapt_iters
         nu = float(self.eb_nu)
         nu_e, var_e0 = float(self.eb_eps_nu), var_e
@@ -299,6 +309,9 @@ class IRTItem(IRT):
             hP = np.bincount(P, wt, nP) + 1 / var_u
             delta += (np.bincount(P, y - mu, nP) - (delta - u) / var_u) / hP
             vdel_ = 1 / hP
+            if nu_u > 0:
+                var_u = float(np.clip((((delta - u) ** 2 + vdel_).sum() + nu_u * var_u0) / (nP + nu_u),
+                                      0.05 * var_u0, 20 * var_u0))
             if lr and self.lr_adapt_w:
                 hq = hP - 1 / var_u + 1e-9
                 zs = delta + np.bincount(P, y - mu, nP) / hq
@@ -364,7 +377,8 @@ class IRTItem(IRT):
                "eps": {ik: float(eps[kk]) for ik, kk in iidx.items()},
                "g": {t: (float(g[gi]), float(vg[gi])) for t, gi in gidx.items()},
                **({"lr_w": lw, "lr_S": np.linalg.inv(Apost)} if lr else {}),
-               "gs2": {bk: float(s2[bi]) for bi, bk in enumerate(bkeys)}, "var_e": float(var_e)}
+               "gs2": {bk: float(s2[bi]) for bi, bk in enumerate(bkeys)}, "var_e": float(var_e),
+               **({"var_u": float(var_u)} if nu_u > 0 else {})}
         if use_rp:
             pv = np.concatenate([np.full(sl.stop - sl.start, tv) for (sl, _), tv in zip(slices, t2)])
             Sw = np.linalg.inv((Zc * heff[:, None]).T @ Zc + np.diag(1 / pv))
@@ -408,11 +422,11 @@ class IRTItem(IRT):
             dm, dv = st["delta"].get(subject_key(s), (None, None)) if st else (None, None)
             if dm is None and self.lr_on:
                 x = self.lr_x(s)
-                var_r = self.lr_var_r * self.lr_rvar_mult * vs
+                var_r = (st or {}).get("var_u", self.lr_var_r * self.lr_rvar_mult * vs)
                 w, S = (st["lr_w"], st["lr_S"]) if st else (self.lr_wbar, self.lr_S * self.lr_wvar_mult * vs)
                 dm, dv = float(x @ w), var_r + float(x @ S @ x)
             elif dm is None:
-                dm, dv = self.subject_prior(s), self.var_u * vs
+                dm, dv = self.subject_prior(s), (st or {}).get("var_u", self.var_u * vs)
             im, iv = st["d"].get(item_key(i), (None, None)) if st else (None, None)
             if im is None:
                 im, iv = self._item_post(st, infos[k])

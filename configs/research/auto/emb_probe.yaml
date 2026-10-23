@@ -1,0 +1,5 @@
+# DEV-ONLY probe (not hosted-safe): A3 + lr + VI with frozen mpnet item embeddings as the online content-map features
+# (irt_item_mix with one member = irt_item_lr runtime path). emb_online: false reproduces auto__A3_lr_vi05.
+name: auto__emb_lrvi
+base: configs/research/auto/lrvi.yaml
+predictor: {name: irt_item_mix, mix_members: [{}], mix_w: [[1, 1, 1, 1, 1, 1]], emb_online: true}

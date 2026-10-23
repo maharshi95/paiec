@@ -146,3 +146,22 @@ Readings:
 - **With seen models, IRT's cold start finally beats a constant** (B0 0.240 vs 0.250). The canonical-identity history prior now finds these models' training records. IRT beats constant on 28/30 dev and 11/12 hold-out benchmarks, and the official baseline by 0.043 / 0.058.
 - **Sharing and MIRT still give no gain**, even though models now recur across eval benchmarks. The history prior already captures most cross-benchmark subject information. MIRT's text loadings do not transfer, and the K sweep is flat. Both stay off.
 - **The hold-out is harder than dev** (0.211 vs 0.184, with higher B31). It is dominated by benchmarks with wide item spread (hle, naturebench, bigfinancebench). That gap is the real generalisation estimate.
+
+## 2026-10-22: published split and the per-benchmark response cap (protocol: research dev, `configs/research/dev.yaml`)
+**Published split.** `configs/aims/` on HF `mgor/aims-measurement-db-{train,val}` (`scripts/export_split.py`) loads to the identical `Dataset` as the seen-dev split on the full db. `aims_irt_cv` reproduces `R_champion_dev` exactly (Δ 0.0000 on 1,032 pairs). Standard protocol (fit on train only, `configs/aims/base.yaml`, 3 seeds): constant 0.2500, empirical_mean 0.2230, beta_shrink 0.1919 (`starter` identical), **irt 0.1857**, irt_cv 0.1830 (runs `aims_*`).
+
+**Response cap.** `data.max_responses: 100000` (from `scripts/make_selection.py`) subsamples whole subjects in 51 of 196 benchmarks, mmdocrag among them (68 → 21 subjects). Variants change only the *training* benchmarks: val benchmarks keep 100K, and the eval population is fixed via `cv.eval_subjects: configs/split_seen/eval_subjects.txt`, because exempting mmdocrag would otherwise add 27 seen identities and change the val pairs. Configs: `configs/research/cap/`. Δ is paired vs `R_champion_dev` (1,032 pairs, all matched):
+
+| variant | ALC | Δ pairs ± 95% CI | win % | ΔB0 | ΔB1 | ΔB31 |
+|---|---|---|---|---|---|---|
+| control (100K everywhere) | 0.1830 | 0 | – | – | – | – |
+| ref6 uncapped | 0.1829 | −0.0001 ± 0.0002 | 51 | −0.0004 | +0.0002 | +0.0002 |
+| train cap 150K | 0.1827 | −0.0000 ± 0.0007 | 53 | +0.0007 | −0.0007 | +0.0008 |
+| train cap 200K | 0.1833 | +0.0005 ± 0.0006 | 50 | −0.0003 | −0.0005 | +0.0011 |
+| ref6 uncapped + 150K | 0.1827 | −0.0001 ± 0.0007 | 52 | +0.0002 | −0.0009 | +0.0007 |
+| ref6 uncapped + 200K | 0.1832 | +0.0003 ± 0.0006 | 50 | −0.0004 | −0.0004 | +0.0008 |
+
+Readings:
+- **No variant helps.** Every CI spans 0, and the best paired Δ is −0.0001. Per benchmark, more data shuffles results (biggen −0.017, worldcentralbanks +0.015, n ≤ 9 pairs) without a net effect. The cap stays at 100K, and the published split is unchanged.
+- The full mmdocrag subject set adds nothing: the 21 kept subjects already cover the history prior for these eval models.
+- Larger caps cost memory and fit time (+50% training responses at 200K) for nothing, so the 100K cap is not a binding constraint on the champion.

@@ -2,6 +2,7 @@
 
     python scripts/export_split.py --config configs/split_seen/dev_base.yaml --out /fs/clip-scratch/mgor/aims-split
     python scripts/export_split.py --config configs/split_seen/dev_base.yaml --out ... --push   # private repos
+    python scripts/export_split.py --root data/mdb --out data/aims   # rebuild data/aims/{train,val} from a local db
 
 From the config's universe (`data.benchmarks`, which already excludes the locked hold-out):
   val   = the benchmarks of `cv.test_benchmarks` (5 grouped folds; fold ids go to split.json),
@@ -36,6 +37,7 @@ from paiec.data.dataset import (
 )
 
 UPSTREAM = "aims-foundations/measurement-db"
+PINNED = "54074453da7b9911be0f48e4c560be547bc84d21"   # upstream revision of the published split
 REPOS = {"train": "mgor/aims-measurement-db-train", "val": "mgor/aims-measurement-db-val"}
 
 
@@ -149,9 +151,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/split_seen/dev_base.yaml")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--root", help="measurement-db directory (default: the config's data.root)")
     ap.add_argument("--push", action="store_true", help="upload to the HF repos (created private if missing)")
     a = ap.parse_args()
     cfg = load_config(a.config)
+    if a.root:
+        cfg["data"]["root"] = a.root
     d = cfg["data"]
     folds = [[f] if isinstance(f, str) else list(f) for f in cfg["cv"]["test_benchmarks"]]
     val = [b for f in folds for b in f]
@@ -160,6 +165,9 @@ def main():
     split = {"train": [b for b in universe if b not in val], "val": [b for b in universe if b in val]}
     seen_ids = seen_identities(tables, d.get("prefer_seen_from"))
     revision = (Path(d["root"]) / "REVISION").read_text().strip()
+    if revision != PINNED:
+        print(f"warning: {d['root']} is at revision {revision[:8]}, not {PINNED[:8]}; the split will differ from the "
+              "published one (download with --revision " + PINNED + ")")
     sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False).stdout.strip()
     out = Path(a.out)
     for name, benches in split.items():

@@ -15,6 +15,8 @@ core tables total ~14.8 GB, traces ~108 GB (skipped unless --traces).
 
     python scripts/download_data.py --all                                  # every public benchmark
     python scripts/download_data.py --benchmarks matharena mmdocrag        # a list
+    python scripts/download_data.py --config configs/split_seen/dev_base.yaml --root data/mdb \
+        --revision 54074453da7b9911be0f48e4c560be547bc84d21               # a config's universe (rebuild the split)
     python scripts/download_data.py --query "n_subjects >= 10 and response_type == 'binary'"
     python scripts/download_data.py --all --max-mb 1000                    # skip benchmarks > 1 GB
 
@@ -65,6 +67,7 @@ def main():
     ap.add_argument("--root", "--out", dest="root", default=None)
     ap.add_argument("--revision", default=None, help="commit sha to pin (default: latest)")
     ap.add_argument("--benchmarks", nargs="*")
+    ap.add_argument("--config", help="download the benchmarks a config loads (its data.benchmarks)")
     ap.add_argument("--query", help="pandas query over inventory.csv")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--max-mb", type=float)
@@ -75,6 +78,11 @@ def main():
         return download_split(a.split, a.root or "data/aims", a.revision, a.workers)
     a.root = a.root or DEFAULT_ROOT
     sha = HfApi().dataset_info(REPO, revision=a.revision).sha
+    if a.config:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+        from paiec.config import load_config
+        a.benchmarks = load_config(a.config)["data"]["benchmarks"]
     slugs = select(a.root, a.benchmarks, a.query, a.all, a.max_mb)
     tables = CORE + (("traces",) if a.traces else ())
     jobs = [(s, t) for s in slugs for t in tables]

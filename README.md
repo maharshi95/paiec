@@ -25,7 +25,7 @@ uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 # 2. Data: the benchmark-level train/val split (2.3 GB parquet) -> data/aims/{train,val}
-hf auth login                              # once; needs read access to the two datasets
+hf auth login                              # once; the split datasets are private (see "Data access")
 python scripts/download_data.py --split
 
 # 3. Smoke test: fits on 6 benchmarks, scores 6 val benchmarks (~10 s, <1 GB RAM)
@@ -44,6 +44,20 @@ A full-split run loads all 196 benchmarks. It needs about 40–60 GB of RAM and 
 `runs/<name>/{config.yaml, metrics.json, pairs.csv}`.
 
 ## The data split
+
+**Data access.** The two split datasets are **private**, because the upstream measurement-db is gated with
+manual review. There are two ways to get them:
+- ask the maintainer ([@mgor](https://huggingface.co/mgor) on HF) for read access, then run `download_data.py --split`;
+- or rebuild them yourself from upstream (request access to
+  [`aims-foundations/measurement-db`](https://huggingface.co/datasets/aims-foundations/measurement-db) first).
+  The result is byte-identical to the published files:
+
+```bash
+hf auth login                                  # with approved access to aims-foundations/measurement-db
+python scripts/download_data.py --config configs/split_seen/dev_base.yaml --root data/mdb \
+    --revision 54074453da7b9911be0f48e4c560be547bc84d21    # 196 benchmarks, ~7 GB, ~2 min
+python scripts/export_split.py --root data/mdb --out data/aims   # ~5 min -> data/aims/{train,val}, identical files
+```
 
 | | HF dataset | benchmarks | responses | role |
 |---|---|---|---|---|

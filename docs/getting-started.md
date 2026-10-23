@@ -20,8 +20,17 @@ you). Otherwise BLAS oversubscription can make runs about 50× slower.
 ## 2. Data
 
 ```bash
-hf auth login                                  # token with read access
+hf auth login                                  # token with read access to the two (private) datasets
 python scripts/download_data.py --split        # both halves -> data/aims/train, data/aims/val (2.3 GB)
+```
+The split datasets are private, because upstream measurement-db is gated with manual review. Ask the
+maintainer (@mgor on HF) for read access. Alternatively, with approved access to
+`aims-foundations/measurement-db`, rebuild byte-identical files locally:
+```bash
+hf auth login                                  # with approved access to aims-foundations/measurement-db
+python scripts/download_data.py --config configs/split_seen/dev_base.yaml --root data/mdb \
+    --revision 54074453da7b9911be0f48e4c560be547bc84d21    # 196 benchmarks, ~7 GB, ~2 min
+python scripts/export_split.py --root data/mdb --out data/aims   # ~5 min -> data/aims/{train,val}, identical files
 ```
 | | HF dataset | benchmarks | responses |
 |---|---|---|---|
@@ -50,7 +59,8 @@ are diverse in domain, and are checked for duplicate items shared with train (`b
 12 more benchmarks are a locked hold-out, kept out of both splits for milestone checks.
 
 The full upstream dataset (281 benchmarks, gated) is available through
-`python scripts/download_data.py --all --root <dir>`. You need it only to build new splits.
+`python scripts/download_data.py --all --root <dir>`. You need it only to rebuild this split (above) or to build
+new ones (`scripts/make_selection.py`).
 
 ## 3. What a run does
 

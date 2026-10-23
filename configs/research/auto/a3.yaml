@@ -1,0 +1,4 @@
+# auto: current best item model (item__A3_mix_eb10) reproduced on exp/auto; base for stacking variants
+name: auto__A3
+base: configs/research/champion.yaml
+predictor: {name: irt_item, item_target: absolute, beta_var_mult: 4.0, rp_frac: 0.3, rp_dim: 64, kv_frac: 0.2, dup_frac: 0.2, eb_nu: 10}

@@ -186,3 +186,37 @@ Readings:
 Review found that `kind: mixed` benchmarks without declared bounds are binarised against the whole benchmark's observed range, so a small-range sub-scale is mislabelled (`todo.md` §1). Confirmed on vhelm (exact-match 0/1 grades become y = 0), prism (`if_chosen`) and **scale_mrt** (its `one_to_five` half, 51.9% of responses, is y = 0 throughout). Only scale_mrt is scored (val fold 4).
 - Decision: leave the labels as is (history stays comparable), document, and drop scale_mrt from the published split: `data.exclude` in `configs/aims/{base,export}.yaml`; HF val 30 → 29 benchmarks (1,622,445 responses), train unchanged (it was never in train).
 - Consequence: `configs/aims` and `configs/split_seen` (research loop, every `R_*` run) now differ by one benchmark and are not directly comparable. The `aims_*` numbers logged above (val of 30) are superseded by the re-scored table in the README.
+
+## 2026-10-23: review fixes, re-score on the published split (29 val benchmarks)
+Four independent code reviews (model core, protocol and submission path, data and caching, other predictors) plus an adversarial-evidence fuzz of every predictor. No review found a crash on the hosted path, and the protocol review confirmed that the replay matches the organizers' client (hash-uniform random mode, fill rule, deep-copied inputs, `bool` check, per-checkpoint worker restarts).
+
+Fixed (regression tests in `tests/test_harness.py` that fail on the old code):
+- `irt_item`: with `eb_u_nu` on, the subject-regression weights used the curvature from the pre-update `var_u`, so 4 of 80 test evidence sets solved an indefinite system mid-EM (min eigenvalue −17.6). Only configs with `eb_u_nu > 0` are affected (the fitted-gate model), not the champion.
+- `irt_mix`: `mix_fold_w` / `mix_fold_c` were keyed by benchmark name but items carry anonymised ids, so they were never used; every dev number for the fitted gate was in-sample. Honest dev ALC for `auto/best.yaml` is about 0.1730, not the recorded 0.1726.
+- `irt_item`: item-info and projection caches are keyed by the settings they depend on (mix members overriding `rp_frac`, `rp_dim`, `rp_seed`, `kv_numeric` or `emb_online` shared features).
+- `subject_history` (beta_shrink, starter): rates are Laplace-smoothed; a 100% or 0% pair used to clip to ±9 logits whatever its size.
+- `mirt`: theta prior cached per subject instead of per shared identity.
+- Item length features use the first 8000 characters (training items are truncated to that, the hosted worker passes full text); `itertools.pairwise` removed (Python 3.10+).
+- Caches: the dataset pickle key now includes roots, table sizes and loader code (a capped export and the full db had collided on one key); the fit-cache key hashes `FIT_HELPERS`; the evidence fingerprint covers every visible field.
+- `ref_caimira`: picks cuda only if a kernel runs (its three tests failed on a GPU the torch build has no kernels for), `val_frac = 0` keeps the last epoch, `ens` forwards its settings. `build_submission` refuses it (its predictions need a 4.4 GB embedding table that is not in the ZIP).
+- Tooling: `build_submission` validates the acquisition config, `check_zip` imports `labeling.py`, `compare.py` prints a benchmark-clustered CI and warns when run settings differ, `build_predictor` warns about parameters it drops, measurement-db defaults are portable (`PAIEC_MDB`).
+
+Not fixed, with reasons: `todo.md`.
+
+Verification (runs `R_champion_dev_post`, `R_champion_holdout_post`): the champion reproduces its earlier dev and hold-out runs on every pair (1,032 and 444 pairs, max |ΔALC| 4e-16), so none of the fixes moved it. The fix to `irt_item` also removed the large incremental-vs-fresh discrepancies in the fuzz for `auto_best` (all-zero evidence: 0.995 → 0.003).
+
+Published split (`configs/aims/*`, fit on train, 3 seeds, 29 val benchmarks, 972 pairs; `scale_mrt` excluded). Δ vs `irt`, bench-macro CI:
+
+| model | ALC | Δ vs irt (pairs ± CI) | Δ vs irt (bench-macro ± CI) | B0 | B1 | B3 | B7 | B15 | B31 |
+|---|---|---|---|---|---|---|---|---|---|
+| constant 0.5 | 0.2500 | | | 0.250 | 0.250 | 0.250 | 0.250 | 0.250 | 0.250 |
+| empirical_mean (official baseline) | 0.2296 | | | 0.250 | 0.340 | 0.224 | 0.192 | 0.180 | 0.174 |
+| beta_shrink = starter | 0.1924 | | | 0.254 | 0.199 | 0.189 | 0.182 | 0.177 | 0.173 |
+| irt | 0.1897 | 0 | 0 | 0.252 | 0.198 | 0.187 | 0.180 | 0.172 | 0.169 |
+| irt_cv (train + other val groups) | 0.1869 | −0.0028 ± 0.0009 | −0.0053 ± 0.0048 | 0.239 | 0.197 | 0.186 | 0.179 | 0.171 | 0.162 |
+| **irt_item_lr** | **0.1824** | −0.0076 ± 0.0013 | **−0.0080 ± 0.0046** (20/29 benchmarks better, p = 0.03) | 0.248 | 0.195 | 0.181 | 0.171 | 0.162 | 0.156 |
+
+Readings:
+- The champion's gain over `irt` carries over to the published split at about the same size as on dev (−0.0076 vs −0.0066), and it is significant under the benchmark-clustered CI.
+- `irt_cv` is better than `irt` mainly at B0 and B31 (more training data), but its clustered CI includes 0.
+- The earlier published-split numbers (30 val benchmarks, e.g. irt 0.1857) are superseded; they included `scale_mrt`.

@@ -2,9 +2,10 @@
 
 Deadline: **2026-10-30 AoE** (code + 4–8 page report on OpenReview, plus the chosen Codabench submission ID).
 
-## Current state (2026-10-22)
-- Default model: `configs/irt.yaml` (`model.md`). Built ZIP: `dist/irt.zip`, which passes the organizers' validator. **Not yet submitted to Codabench.**
-- Best numbers (`results.md`):
+## Current state (2026-10-23)
+- **Champion: `irt_item_lr`** (`configs/aims/irt_item_lr.yaml`, `configs/research/champion.yaml`; `model.md`). Research-loop dev 0.1766 / hold-out 0.2058 (previous `irt`: 0.1830 / 0.2102); published split 0.1824 vs 0.1897 (`README.md`). Its ZIP builds and passes `check_zip.py`; **not yet submitted to Codabench**, and the organizers' starting-kit validator has not been run on it. `dist/irt.zip` (the older IRT) did pass the validator.
+- Published train/val split: HF `mgor/aims-measurement-db-{train,val}` (private), `configs/aims/`, `getting-started.md`. Known labelling issue and deferred review findings: `todo.md`.
+- Best numbers up to 2026-10-22 (`results.md`):
   - ref6-LOBO: ALC 0.1772 vs the official baseline 0.2328;
   - **ref6-seen split (default): dev 0.1844 vs 0.2269, hold-out 0.2113 vs 0.2689;**
   - random-model panel: dev 0.2129, hold-out 0.1966.
@@ -13,12 +14,13 @@ Deadline: **2026-10-30 AoE** (code + 4–8 page report on OpenReview, plus the c
 
 ## Research loop (started 2026-10-22; `research-loop.md`)
 - Headline protocol: `configs/research/dev.yaml` (seen-dev, 3 seeds); champion `configs/research/champion.yaml`, control `runs/R_champion_dev`.
-- Round 1 directions (worktrees `../paiec-wt/<slug>`, branches `exp/<slug>`): diag, hier, subj, item, acq, meta.
+- Round 1 directions (worktrees `../paiec-wt/<slug>`, branches `exp/<slug>`): diag, hier, subj, item, acq, meta. Merged: diag, hier, subj, item (stack), then auto (stacking). Not merged (no documented winner): acq, feat, meta.
+- Candidate for the next promotion: the fitted-gate `irt_item_mix` (`configs/research/auto/best.yaml`), honest dev ≈ 0.1730 vs 0.1766; needs a hold-out run with gate weights not fitted on the evaluated benchmarks (`todo.md` §3).
 - After each round: merge winners, measure the stacked combination, promote, check the hold-out, and launch the next round.
 
 ## Priorities
 1. **Diagnose the 14 dev benchmarks where IRT is worse than a constant 0.5** (offset/calibration). Improve model-identity resolution (it helps history priors, and would let sharing and MIRT matter).
-2. **Submit to Codabench** with the pool-trained IRT, to get formative feedback and calibrate local-vs-hosted numbers.
+2. **Submit to Codabench** with the champion (`build_submission.py --config configs/aims/irt_item_lr.yaml`, then the starting-kit checks), to get formative feedback and calibrate local-vs-hosted numbers. This also tests the assumption behind the seen-model split (`validation.md`).
 3. **Model:**
    - kv-group and duplicate tying, plus robustness guards (`model.md` roadmap 1–2);
    - a multidimensional subject model now that there are many training benchmarks (roadmap 4);

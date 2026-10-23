@@ -77,20 +77,32 @@ Data licence: CC-BY-SA-4.0; individual benchmarks keep their own licences. Cite
 
 ## Results on the val split
 
-`configs/aims/*.yaml` (3 seeds; ≤20 subjects per benchmark, ≤100 eval items per pair, ref6-seen models).
-Lower is better.
+`configs/aims/*.yaml`: fit on train, score the 29 val benchmarks (3 seeds; ≤20 subjects per benchmark, ≤100 eval items
+per pair; only models also seen in the six reference benchmarks; 972 subject–benchmark pairs). `ALC` is the mean over the
+5 val groups, lower is better, and B0…B31 are the Brier scores at each label budget.
 
 | model | config | ALC | B0 | B1 | B3 | B7 | B15 | B31 |
 |---|---|---|---|---|---|---|---|---|
 | constant 0.5 | `constant.yaml` | **0.2500** | 0.250 | 0.250 | 0.250 | 0.250 | 0.250 | 0.250 |
-| official baseline (pair mean, random acquisition) | `empirical_mean.yaml` | **0.2230** | 0.250 | 0.330 | 0.217 | 0.185 | 0.174 | 0.168 |
-| Beta shrinkage + subject history | `beta_shrink.yaml` | **0.1919** | 0.265 | 0.203 | 0.188 | 0.179 | 0.173 | 0.168 |
-| starter template (= beta_shrink, rewritten) | `starter.yaml` | **0.1919** | 0.265 | 0.203 | 0.188 | 0.179 | 0.173 | 0.168 |
-| amortised IRT + uncertainty acquisition (previous champion) | `irt.yaml` | **0.1857** | 0.252 | 0.195 | 0.183 | 0.176 | 0.167 | 0.164 |
-| IRT, trained on train + other val groups | `irt_cv.yaml` | **0.1830** | 0.240 | 0.194 | 0.182 | 0.174 | 0.166 | 0.156 |
-| **champion**: IRT + online item amortisation + subject-descriptor regression | `irt_item_lr.yaml` | **0.1780** | 0.248 | 0.191 | 0.176 | 0.166 | 0.157 | 0.151 |
+| official baseline (pair mean, random acquisition) | `empirical_mean.yaml` | **0.2296** | 0.250 | 0.340 | 0.224 | 0.192 | 0.180 | 0.174 |
+| Beta shrinkage + subject history | `beta_shrink.yaml` | **0.1924** | 0.254 | 0.199 | 0.189 | 0.182 | 0.177 | 0.173 |
+| starter template (= beta_shrink, rewritten) | `starter.yaml` | **0.1924** | 0.254 | 0.199 | 0.189 | 0.182 | 0.177 | 0.173 |
+| amortised IRT + uncertainty acquisition (previous champion) | `irt.yaml` | **0.1897** | 0.252 | 0.198 | 0.187 | 0.180 | 0.172 | 0.169 |
+| IRT, trained on train + the other val groups | `irt_cv.yaml` | **0.1869** | 0.239 | 0.197 | 0.186 | 0.179 | 0.171 | 0.162 |
+| **champion**: IRT + online item amortisation + subject-descriptor regression | `irt_item_lr.yaml` | **0.1824** | 0.248 | 0.195 | 0.181 | 0.171 | 0.162 | 0.156 |
 
-The headline `ALC` is the mean over the 5 val groups. The starter template reproduces `beta_shrink` exactly, which makes a useful check that a copied model is wired up correctly. The champion beats `irt` by −0.0081 ± 0.0013 (paired, better on 65% of pairs). `irt_cv` reproduces the research loop's previous `R_champion_dev` on the full measurement-db exactly (Δ = 0 on all 1,032 matched pairs).
+- **The champion beats the official baseline by 0.047 ALC** (−0.048 ± 0.004 paired over pairs; −0.043 ± 0.010 clustered
+  by benchmark) and the previous IRT champion by 0.0073 (−0.0080 ± 0.0046 clustered; better on 20 of 29 benchmarks,
+  sign test p = 0.03). Almost all of the gain over `irt` comes once labels arrive (B3–B31, −0.007 to −0.013).
+- Quote the **bench-macro** CI that `scripts/compare.py` prints: pairs of one benchmark share a fitted fold and the
+  benchmark offset, so the pair-level CI is about 3× too narrow.
+- `starter.yaml` reproduces `beta_shrink.yaml` exactly, which makes a useful check that a copied model is wired up
+  correctly. `irt_cv.yaml` gives the models more training data (train + the other four val groups).
+- On the research loop's own protocol (the same data on the full db, `configs/research/`, which still includes
+  `scale_mrt` and has a locked 12-benchmark hold-out) the champion scores **0.1766 on dev** and **0.2058 on the
+  hold-out**, against 0.1830 / 0.2102 for `irt` (`docs/results.md`). Those numbers are not comparable with the table above.
+- `scale_mrt` is excluded from the split because of a labelling problem that also affects other benchmarks; see
+  [docs/todo.md](docs/todo.md).
 
 ## Make your own model
 
@@ -112,6 +124,7 @@ The headline `ALC` is the mean over the 5 val groups. The starter template repro
    python scripts/run.py --config configs/aims/mine.yaml
    python scripts/run.py --config configs/aims/mine.yaml --set predictor.alpha=8 --name aims_mine_a8
    python scripts/compare.py runs/aims_irt_item_lr runs/aims_mine runs/aims_mine_a8 --budgets --folds
+   # negative Δ = better; trust the "bench-macro" CI, which accounts for pairs sharing a benchmark
    python scripts/leaderboard.py --filter aims_
    ```
 5. Package it for Codabench: `python scripts/build_submission.py --config configs/aims/mine.yaml`,
@@ -127,13 +140,17 @@ contracts, reading `metrics.json`, sweeps, and cluster use, is in
     src/paiec/
       data/         dataset.py (parquet tables -> competition-format dicts, binarisation, cache), synthetic.py
       features/     item.py, subject.py, identity.py: named field extractors, canonical model identity
-      predictors/   base.py (contract + evidence cache), simple.py, starter.py, irt.py (champion), mirt.py
+      predictors/   base.py (contract + evidence cache), simple.py (baselines), starter.py (template),
+                    irt.py (base IRT), irt_item.py (online item amortisation: the champion `irt_item_lr`),
+                    irt_lr.py / irt_h.py (subject regression, hierarchical VI), irt_mix.py (fitted gate, candidate),
+                    mirt.py, ref_*.py (dev-only reference models)
       acquisition/  streaming policies: official_random, accept_all, uncertainty, information, quantile
       sim/replay.py hosted-protocol replay (pools, streaming acquisition, nested checkpoints, scoring)
       experiment.py folds x seeds -> runs/<name>/{config.yaml, metrics.json, pairs.csv}
       runtime.py    JSON (de)serialisation + safe predict for the ZIP
     scripts/        run, sweep, compare, leaderboard, build_submission, check_zip, time_predict,
                     download_data, export_split, make_selection, reports
+    analysis/       research-loop scratch (per-direction scripts and findings); not needed to use the harness
     submission_template/  model.py / labeling.py shims copied to the ZIP root
     launch/         Slurm / workstation job scripts
     data/ runs/ dist/ logs/   gitignored
@@ -143,4 +160,6 @@ contracts, reading `metrics.json`, sweeps, and cluster use, is in
 - [docs/README.md](docs/README.md): index of the research docs
 - [docs/evaluation.md](docs/evaluation.md), [docs/submission-format.md](docs/submission-format.md): hosted protocol and ZIP interface
 - [docs/model.md](docs/model.md): the champion model; [docs/results.md](docs/results.md): results log
+- [docs/todo.md](docs/todo.md): known issues deliberately left open (mixed-scale labels, excluded benchmarks, caveats)
+- [docs/research-loop.md](docs/research-loop.md) and `docs/research/`: how the champion was found, per-direction findings
 - [docs/dataset.md](docs/dataset.md), [docs/validation.md](docs/validation.md), [docs/benchmark-selection.md](docs/benchmark-selection.md): data and splits

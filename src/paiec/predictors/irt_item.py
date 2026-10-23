@@ -32,8 +32,12 @@ class IRTItem(IRT):
     name = "irt_item"
     FIT_AS = IRT
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("rp_frac", "rp_dim", "rp_seed", "kv_frac", "dup_frac", "item_iters",
-                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var", "vi", "vi_frac", "lr_on")
+                                           "kv_numeric", "eb_nu", "eb_eps_nu", "rp2_frac", "rp2_dim", "prior_slope_var", "vi", "vi_frac", "lr_on",
+                                           "eb_bound")
     rp_frac = 0.0
+    # online-EM scales (eb_nu) stay within [1/eb_bound, eb_bound] x their configured value. Without a bound, a small
+    # near-separable benchmark can run away (bigger weights -> bigger scale -> weaker prior) until H is singular.
+    eb_bound = 100.0
     rp_dim = 64
     rp_seed = 0
     # degree-2 block: a tensor sketch of (z_i . z_j)^2 on the centred, normalised map features (a sharper,
@@ -140,8 +144,20 @@ class IRTItem(IRT):
         assert not self.subject_sharing, "irt_item supports per-benchmark adaptation only"
         touched = state["ev"].add(new)
         for b in touched:
-            state["fits"][b] = self._adapt_bench(state["ev"].by_bench[b], state["fits"].get(b))
+            state["fits"][b] = self._safe_adapt_bench(state["ev"].by_bench[b], state["fits"].get(b))
         return state
+
+    def _safe_adapt_bench(self, obs, warm=None):
+        """One benchmark's fit, or None (score falls back to the priors) if it fails or is not finite. Evidence is
+        global, so an exception here would otherwise lose every benchmark's predictions at this checkpoint."""
+        try:
+            out = self._adapt_bench(obs, warm)
+        except (np.linalg.LinAlgError, FloatingPointError, ValueError, ZeroDivisionError):
+            return None
+        vals = [*out["beta"], *(x for dv in out["delta"].values() for x in dv), *(x for dv in out["d"].values() for x in dv)]
+        if out.get("w") is not None:
+            vals += [float(np.abs(out["w"]).max(initial=0.0))]
+        return out if np.all(np.isfinite(vals)) else None
 
     def adapt(self, labeled):
         return self.extend({"ev": Evidence(), "fits": {}, "joint": None}, labeled)
@@ -307,7 +323,8 @@ class IRTItem(IRT):
                     if nu > 0:
                         he = h / (1 + h * var_e)
                         Sm = np.linalg.inv((Zc * he[:, None]).T @ Zc + np.diag(1 / pv))
-                        t2 = [(w[sl] @ w[sl] + np.trace(Sm[sl, sl]) + nu * t0) / (sl.stop - sl.start + nu)
+                        t2 = [float(np.clip((w[sl] @ w[sl] + np.trace(Sm[sl, sl]) + nu * t0) / (sl.stop - sl.start + nu),
+                                            t0 / self.eb_bound, t0 * self.eb_bound))
                               for sl, t0 in slices]
                     sh = shared()
                     d = yh + sh + eps
@@ -320,7 +337,8 @@ class IRTItem(IRT):
                     if nu > 0:
                         he = h / (1 + h * var_e)
                         vgb = 1 / (np.bincount(gg, aa * aa * he[jj], nG) + 1 / s2[bi])
-                        s2[bi] = (float((g[sel] ** 2 + vgb[sel]).sum()) + nu) / (sel.sum() + nu)
+                        s2[bi] = min(max((float((g[sel] ** 2 + vgb[sel]).sum()) + nu) / (sel.sum() + nu),
+                                         1 / self.eb_bound), self.eb_bound)
                     sh = shared()
                     d = yh + sh + eps
         d = yh + sh + eps

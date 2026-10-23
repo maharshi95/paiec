@@ -224,6 +224,29 @@ def test_irt_item_contracts(ds, tmp_path):
     assert np.allclose(base.predict_batch(inputs, ev), zero.predict_batch(inputs, ev), atol=1e-12)
 
 
+def test_irt_item_isolates_failing_benchmark(ds, monkeypatch):
+    """A benchmark whose adaptation fails falls back to the priors; the other benchmarks keep their fits."""
+    pred = build_predictor({**ITEM_CFG, "name": "irt_item_lr"}).fit(ds.restrict(["bench0", "bench1"]))
+    idx = np.concatenate([np.nonzero(ds.resp_b == b)[0][::5][:100] for b in (1, 2)])
+    ev = [[[ds.subjects[ds.resp_s[k]], ds.items[ds.resp_i[k]]], int(ds.resp_y[k])] for k in idx]
+    bad = ev[0][0][1]["benchmark_id"]
+    assert len({e[0][1]["benchmark_id"] for e in ev}) > 1
+    orig = type(pred)._adapt_bench
+
+    def flaky(self, obs, warm=None):
+        if obs[0][4]["benchmark_id"] == bad:
+            raise np.linalg.LinAlgError("Singular matrix")
+        return orig(self, obs, warm)
+
+    monkeypatch.setattr(type(pred), "_adapt_bench", flaky)
+    state = pred.adapt(ev)
+    assert state["fits"][bad] is None
+    assert all(st is not None for b, st in state["fits"].items() if b != bad)
+    inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::53], ds.resp_i[::53])]
+    p = pred.predict_batch(inputs, ev)
+    assert np.isfinite(p).all() and ((p > 0) & (p < 1)).all()
+
+
 def test_fit_as_shares_parent_fit_cache(ds, tmp_path, monkeypatch):
     from paiec.fitcache import cache_key, fit_cached
     monkeypatch.setenv("PAIEC_FIT_CACHE", str(tmp_path))

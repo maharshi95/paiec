@@ -1,0 +1,5 @@
+# collaborator's c14_lex_cosine_p4_a1 (pair-local lexical kernel), uniform/official-random acquisition as submitted
+name: ref__lex
+base: configs/research/champion.yaml
+predictor: {name: ref_lex}
+acquisition: {name: official_random}

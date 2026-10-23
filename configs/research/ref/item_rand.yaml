@@ -1,0 +1,4 @@
+# our item model with the same random acquisition the collaborator's submission uses (acquisition-matched control)
+name: ref__item_rand
+base: configs/research/item.yaml
+acquisition: {name: official_random}

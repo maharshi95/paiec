@@ -1,0 +1,4 @@
+# same model with our uncertainty acquisition (its predictions are 0.5 until a pair has labels; shows the acquisition effect)
+name: ref__lex_unc
+base: configs/research/ref/lex.yaml
+acquisition: {name: uncertainty, radius: 0.15}

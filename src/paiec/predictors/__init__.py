@@ -5,9 +5,10 @@ from .irt_item import IRTItem, IRTItemLR
 from .irt_lr import IRTLR
 from .mirt import MIRT
 from .ref_caimira import RefCaimira
+from .ref_lex import RefLex
 from .simple import BetaShrink, Constant, EmpiricalMean
 
-PREDICTORS = {cls.name: cls for cls in (Constant, EmpiricalMean, BetaShrink, IRT, IRTH, IRTItem, IRTItemLR, IRTLR, MIRT, RefCaimira)}
+PREDICTORS = {cls.name: cls for cls in (Constant, EmpiricalMean, BetaShrink, IRT, IRTH, IRTItem, IRTItemLR, IRTLR, MIRT, RefCaimira, RefLex)}
 
 
 def build_predictor(cfg: dict) -> Predictor:

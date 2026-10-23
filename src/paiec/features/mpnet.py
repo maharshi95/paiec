@@ -31,10 +31,10 @@ class EmbeddingTable:
         order = np.argsort(z["keys"])
         self.keys, self.emb = z["keys"][order], z["emb"][order]
 
-    def lookup(self, items) -> np.ndarray:
+    def lookup(self, items, dtype=np.float32) -> np.ndarray:
         h = np.array([item_hash(i) for i in items], dtype=np.uint64)
         pos = np.minimum(np.searchsorted(self.keys, h), len(self.keys) - 1)
         ok = self.keys[pos] == h
-        out = self.emb[pos].astype(np.float32)
+        out = self.emb[pos].astype(dtype, copy=False)
         out[~ok] = 0.0   # unseen item text: zero embedding (model falls back to biases)
         return out

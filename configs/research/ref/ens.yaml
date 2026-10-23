@@ -1,0 +1,4 @@
+# collaborator's champion profile: lite + irtm logit ensemble, temperature 1.10
+name: ref__ens
+base: configs/research/champion.yaml
+predictor: {name: ref_caimira, kind: ens, temperature: 1.1}

@@ -1,0 +1,4 @@
+# collaborator's CaimiraLite (irtm) retrained on our folds (src/paiec/predictors/ref_caimira.py)
+name: ref__irtm
+base: configs/research/champion.yaml
+predictor: {name: ref_caimira, kind: irtm}

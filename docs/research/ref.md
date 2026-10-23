@@ -100,8 +100,40 @@ Deviations from their pipeline (all deliberate, none tuned):
 - unseen subject / benchmark / condition at test time use the **mean** of the learned rows (their UNK slot is an untrained row);
 - training: BCE, Adam 1e-3, batch 8,192, <= 12 epochs, early stopping on 5% held-out items, instead of their torch_measure trainer.
 
-Held-out item NLL of the lite member on fold 0 was 0.466 (their recorded item-holdout NLL for the NCF baseline: 0.489).
-Dev results to be filled in below.
+Held-out item NLL of the lite member on fold 0 was 0.466 (their recorded item-holdout NLL for the NCF baseline: 0.489):
+the retrained models fit their *training* benchmarks well. Dev results (5 folds, trained on the other benchmarks; run on the
+1080 Ti workstations with the `advscore` env, `launch/research_ws.slurm`, about 7 min per fold per member):
+
+| run | model | ALC | Δ pairs ± CI | win % |
+|---|---|---|---|---|
+| ref__irtm | their m3 architecture (latent 3) | 0.2446 | +0.0640 ± 0.0068 | 21 |
+| ref__ens | lite + irtm, temperature 1.10 | 0.2424 | +0.0601 ± 0.0061 | 22 |
+| ref__lite | their m5 architecture (latent 5) | pending (first attempt ran out of host memory; rerun) | | |
+
+Both are static, so Brier is identical at every budget (0.2446 / 0.2424 at B0...B31), only slightly better than the constant
+0.5 predictor (0.25) and 0.06 worse than our champion. They do not use the revealed labels at all, which is what costs them.
+
+**Why (diagnostic, `scripts/diag_ref_static.py`, irtm fits of two folds, 3,000 sampled responses per unseen benchmark):**
+the models fit *training* benchmarks through learned benchmark biases; a new benchmark gets the mean bias, so the benchmark
+base rate is unknown, and the item-text ranking signal transfers weakly.
+
+| benchmark | true rate | mean prediction | Brier | Brier with an oracle base-rate shift | AUC |
+|---|---|---|---|---|---|
+| scale_mrt | 0.17 | 0.73 | 0.469 | 0.148 | 0.43 |
+| helm_bbq | 0.88 | 0.64 | 0.166 | 0.102 | 0.67 |
+| afrimedqa | 0.73 | 0.51 | 0.262 | 0.208 | 0.53 |
+| algotune | 0.71 | 0.55 | 0.259 | 0.228 | 0.50 |
+| robust_reasoning_benchmark | 0.49 | 0.39 | 0.215 | 0.204 | 0.75 |
+| kmmlu | 0.58 | 0.54 | 0.241 | 0.239 | 0.56 |
+
+Ranking quality is mostly AUC 0.50-0.67 (range 0.43-0.75). Even with the true base rate the model barely beats 0.25 on most
+benchmarks, so the loss is a mix of missing base rate (large on skewed benchmarks such as scale_mrt, helm_bbq) and weak
+transfer of item-text features. This is the expected behaviour of a static model on an unseen benchmark, not an indexing bug
+(embeddings, subjects, conditions are looked up consistently with training; unseen benchmark/condition rows use the mean).
+
+**Open question:** their repo reports hidden-test NLL of -0.58 (random -0.693). If the hosted evaluation benchmarks overlap
+the 16 benchmarks CaimiraLite trains on (which would give it benchmark biases and in-benchmark item embeddings), that gap
+would be explained; our protocol evaluates only benchmarks excluded from training. We do not know which applies.
 
 ## Stacking
 

@@ -35,6 +35,25 @@ original `predict` on 320 real (subject, benchmark, evidence-size, item) cases: 
 The official baseline scores 0.2269 on the default seen-dev split (`experiment-plan.md`; a different seed set from `R_dev`, so only indicative), which `lex_cosine` clearly beats. It is
 **0.0133 worse than our champion and about 0.020 worse than our item stack**, at every budget.
 
+**Absolute Brier by budget** (fold-macro means over 1,032 pair-seeds, dev protocol; runs `R_champion_dev`,
+`item__A3_mix_eb10` (exp/item), `stack__item_lr`, `ref__lex`; lower is better):
+
+| Budget | champion | item A3 (our best) | item + subj regression | lex_cosine |
+|---|---|---|---|---|
+| B0 | 0.2404 | 0.2403 | 0.2378 | 0.2500 |
+| B1 | 0.1944 | 0.1911 | 0.1909 | 0.2274 |
+| B3 | 0.1821 | 0.1767 | 0.1749 | 0.1984 |
+| B7 | 0.1740 | 0.1667 | 0.1663 | 0.1794 |
+| B15 | 0.1663 | 0.1566 | 0.1577 | 0.1701 |
+| B31 | 0.1562 | 0.1456 | 0.1482 | 0.1642 |
+| **ALC** (0.1,0.2,0.2,0.2,0.2,0.1 weights; sum 1) | **0.1830** | **0.1768** | **0.1766** | **0.1965** |
+| ALC / 0.25 (constant 0.5 = 1.000) | 0.732 | 0.707 | 0.706 | 0.786 |
+| skill = 1 - ALC/0.25 | 0.268 | 0.293 | 0.294 | 0.214 |
+| ALC vs champion | 0.0% | -3.4% | -3.5% | +7.3% |
+
+"Item A3" is `irt_item` with `rp_frac` 0.3 (64 dims), `kv_frac` 0.2, `dup_frac` 0.2, `eb_nu` 10, not the stacked model:
+adding hier's VI or the subj regression did not move the total beyond noise (`research/item.md`, section 2 below).
+
 **Mechanism.**
 - B0 is the constant 0.5 (ALC contribution 0.250). Our priors give 0.240 at B0 (champion 0.2403).
 - B1-B3 lose most (+0.033, +0.016): one or two own labels move p to roughly 0.75/0.25 or 0.5 +/- 0.25 with alpha = 1, while our

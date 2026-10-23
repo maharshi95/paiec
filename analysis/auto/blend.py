@@ -15,7 +15,7 @@ import numpy as np
 from scipy.optimize import minimize
 
 sys.path.insert(0, str(Path(__file__).parent))
-import common as C
+import common as C  # noqa: E402
 
 
 def lg(p):
@@ -37,9 +37,9 @@ def weights(df):
     return df.budget.map(C.W).values / nresp.values / npairs.values / nseeds.values
 
 
-def fit_brier(A, s, k, w, lam=1e-4, b0=None):
+def fit_brier(A, s, k, w, lam=1e-4, b0=None, off=0.0):
     def f(b):
-        p = sig(A @ b)
+        p = sig(A @ b + off)
         r = k * p - s   # d/dp (k p^2 - 2 p s) / 2
         g = A.T @ (w * 2 * r * p * (1 - p))
         return float(w @ (k * p * p - 2 * p * s)) + lam * b @ b, g + 2 * lam * b

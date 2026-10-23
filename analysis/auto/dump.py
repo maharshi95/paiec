@@ -15,13 +15,13 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from paiec.acquisition import build_policy
-from paiec.config import load_config
-from paiec.fitcache import fit_cached
-from paiec.metrics import BUDGETS
-from paiec.predictors import build_predictor
-from paiec.predictors.base import item_key
-from paiec.sim.replay import build_pairs
+from paiec.acquisition import build_policy  # noqa: E402
+from paiec.config import load_config  # noqa: E402
+from paiec.fitcache import fit_cached  # noqa: E402
+from paiec.metrics import BUDGETS  # noqa: E402
+from paiec.predictors import build_predictor  # noqa: E402
+from paiec.predictors.base import item_key  # noqa: E402
+from paiec.sim.replay import build_pairs  # noqa: E402
 
 BASE = dict(item_target="absolute", beta_var_mult=4.0)
 A3 = dict(BASE, rp_frac=0.3, rp_dim=64, kv_frac=0.2, dup_frac=0.2, eb_nu=10)
@@ -33,6 +33,8 @@ COMPONENTS = {
     "hvi": dict(BASE, name="irt_h", vi=True, nu_u=10),
     "lr": dict(BASE, name="irt_lr"),
     "lex": dict(name="ref_lex"),
+    "A3lrvi05": dict(A3, name="irt_item_lr", lr_wvar_mult=2.0, vi=True, vi_frac=0.5),
+    "A3vi05": dict(A3, name="irt_item", vi=True, vi_frac=0.5),
 }
 
 

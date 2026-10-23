@@ -26,12 +26,25 @@ EDGES = (0, 1, 2, 4, 8, 16)   # bin k: EDGES[k] <= n_own < EDGES[k + 1]
 class IRTItemMix(IRTItemLR):
     name = "irt_item_mix"
     FIT_AS = IRTItemLR
-    RUNTIME_PARAMS = IRTItemLR.RUNTIME_PARAMS + ("mix_members", "mix_w", "mix_c", "mix_fold_w", "mix_fold_c")
+    RUNTIME_PARAMS = IRTItemLR.RUNTIME_PARAMS + ("mix_members", "mix_w", "mix_c", "mix_fold_w", "mix_fold_c",
+                                               "emb_online")
     mix_members = ({"lr_on": False}, {"lr_on": True})
     mix_w = ((1.0,) * 6, (0.0,) * 6)     # [member][bin]
     mix_c = (0.0,) * 6                   # [bin]
     mix_fold_w = None                    # {benchmark: [member][bin]} (dev evaluation only)
     mix_fold_c = None                    # {benchmark: [bin]}
+    # DEV-ONLY probe: frozen mpnet item embeddings (features/mpnet.py) as the online content-map features instead of
+    # the hashed ItemFeaturizer vector. Not hosted-safe: unseen hosted items would need the torch encoder at runtime.
+    emb_online = False
+    _EMB = {}
+
+    def online_features(self, items, X):
+        if not self.emb_online:
+            return X
+        if "t" not in IRTItemMix._EMB:   # process-wide (survives reset_runtime; never pickled)
+            from ..features.mpnet import EmbeddingTable
+            IRTItemMix._EMB["t"] = EmbeddingTable()
+        return IRTItemMix._EMB["t"].lookup(items)
 
     @staticmethod
     def _lg(p):

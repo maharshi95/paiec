@@ -1,0 +1,4 @@
+# auto best (docs/research/auto.md §4): fitted lr+VI vs MAP logit gate (mixfit_lrx) + per-benchmark subject-variance EB
+name: auto__mixfit_lrx_nuu10
+base: configs/research/auto/mixfit_lrx.yaml
+predictor: {eb_u_nu: 10}

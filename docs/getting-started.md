@@ -146,7 +146,7 @@ benchmarks, so use `features.subject.subject_identity` to match the same model a
    in seconds.
 5. Create `configs/aims/mine.yaml` with `base: configs/aims/base.yaml`, `predictor: {name: mine, ...}`
    and an acquisition policy, then run it.
-6. Compare: `python scripts/compare.py runs/aims_irt runs/aims_mine --budgets --folds`. A negative Δ
+6. Compare: `python scripts/compare.py runs/aims_irt_item_lr runs/aims_mine --budgets --folds`. A negative Δ
    means better. Trust a Δ whose 95% CI excludes 0 and that wins on most benchmarks.
 
 To reuse the champion's pieces, `irt.py` contains item text features

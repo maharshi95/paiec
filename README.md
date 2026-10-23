@@ -35,8 +35,8 @@ python scripts/run.py --config configs/aims/quick.yaml
 
 # 4. Score the baseline and the current best model on the full val split
 python scripts/run.py --config configs/aims/empirical_mean.yaml   # official baseline
-python scripts/run.py --config configs/aims/irt.yaml              # champion
-python scripts/compare.py runs/aims_empirical_mean runs/aims_irt  # paired Δ, 95% CI
+python scripts/run.py --config configs/aims/irt_item_lr.yaml      # champion
+python scripts/compare.py runs/aims_empirical_mean runs/aims_irt_item_lr  # paired Δ, 95% CI
 ```
 
 A full-split run loads all 196 benchmarks. It needs about 40–60 GB of RAM and takes 15–30 min on 8 CPUs
@@ -72,10 +72,11 @@ Lower is better.
 | official baseline (pair mean, random acquisition) | `empirical_mean.yaml` | **0.2230** | 0.250 | 0.330 | 0.217 | 0.185 | 0.174 | 0.168 |
 | Beta shrinkage + subject history | `beta_shrink.yaml` | **0.1919** | 0.265 | 0.203 | 0.188 | 0.179 | 0.173 | 0.168 |
 | starter template (= beta_shrink, rewritten) | `starter.yaml` | **0.1919** | 0.265 | 0.203 | 0.188 | 0.179 | 0.173 | 0.168 |
-| **champion**: amortised IRT + uncertainty acquisition | `irt.yaml` | **0.1857** | 0.252 | 0.195 | 0.183 | 0.176 | 0.167 | 0.164 |
-| champion, trained on train + other val groups | `irt_cv.yaml` | **0.1830** | 0.240 | 0.194 | 0.182 | 0.174 | 0.166 | 0.156 |
+| amortised IRT + uncertainty acquisition (previous champion) | `irt.yaml` | **0.1857** | 0.252 | 0.195 | 0.183 | 0.176 | 0.167 | 0.164 |
+| IRT, trained on train + other val groups | `irt_cv.yaml` | **0.1830** | 0.240 | 0.194 | 0.182 | 0.174 | 0.166 | 0.156 |
+| **champion**: IRT + online item amortisation + subject-descriptor regression | `irt_item_lr.yaml` | **0.1780** | 0.248 | 0.191 | 0.176 | 0.166 | 0.157 | 0.151 |
 
-The headline `ALC` is the mean over the 5 val groups. The starter template reproduces `beta_shrink` exactly, which makes a useful check that a copied model is wired up correctly. `irt_cv` reproduces the research loop's `R_champion_dev` on the full measurement-db exactly (Δ = 0 on all 1,032 matched pairs).
+The headline `ALC` is the mean over the 5 val groups. The starter template reproduces `beta_shrink` exactly, which makes a useful check that a copied model is wired up correctly. The champion beats `irt` by −0.0081 ± 0.0013 (paired, better on 65% of pairs). `irt_cv` reproduces the research loop's previous `R_champion_dev` on the full measurement-db exactly (Δ = 0 on all 1,032 matched pairs).
 
 ## Make your own model
 
@@ -96,7 +97,7 @@ The headline `ALC` is the mean over the 5 val groups. The starter template repro
    python scripts/run.py --config configs/aims/quick.yaml --set predictor.name=mine   # does it run?
    python scripts/run.py --config configs/aims/mine.yaml
    python scripts/run.py --config configs/aims/mine.yaml --set predictor.alpha=8 --name aims_mine_a8
-   python scripts/compare.py runs/aims_irt runs/aims_mine runs/aims_mine_a8 --budgets --folds
+   python scripts/compare.py runs/aims_irt_item_lr runs/aims_mine runs/aims_mine_a8 --budgets --folds
    python scripts/leaderboard.py --filter aims_
    ```
 5. Package it for Codabench: `python scripts/build_submission.py --config configs/aims/mine.yaml`,

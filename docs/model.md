@@ -1,5 +1,12 @@
 # Model: current formulation and roadmap
 
+**Champion since 2026-10-23: `irt_item_lr`** (`src/paiec/predictors/irt_item.py`). It is the IRT below plus two
+test-time extensions:
+- online within-benchmark item amortisation: a content map, kv-token groups and per-benchmark scales (`research/item.md`);
+- per-benchmark regression of pair ability on subject descriptors.
+
+Dev 0.1766 vs 0.1830, hold-out 0.2058 vs 0.2102 (`results.md`). The base formulation below still describes the core.
+
 Code is `src/paiec/predictors/irt.py` (class `IRT`, registry name `irt`). The default config is `configs/irt.yaml`. Scores are in `results.md`.
 
 ## Formulation (unidimensional, Rasch / 1PL)

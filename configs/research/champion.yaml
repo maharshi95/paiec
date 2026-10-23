@@ -1,6 +1,8 @@
 # Current headline model (docs/research-loop.md). Update only via the research loop's promotion rule.
-# Champion history: docs/results.md. Dev control run: runs/R_champion_dev.
+# Champion history: docs/results.md. Promoted 2026-10-23: irt_item_lr (IRT + online item amortisation +
+# per-benchmark subject-descriptor regression), dev 0.1766 vs 0.1830, hold-out 0.2058 vs 0.2102.
+# Dev control run: runs/stack__item_lr (main checkout). runs/R_champion_dev holds the previous champion (irt).
 name: R_champion_dev
 base: configs/research/dev.yaml
-predictor: {name: irt, item_target: absolute, beta_var_mult: 4.0}
+predictor: {name: irt_item_lr, item_target: absolute, beta_var_mult: 4.0, rp_frac: 0.4, rp_dim: 32, kv_frac: 0.3, eb_nu: 10, lr_wvar_mult: 2.0}
 acquisition: {name: uncertainty, radius: 0.15}

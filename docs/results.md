@@ -165,3 +165,19 @@ Readings:
 - **No variant helps.** Every CI spans 0, and the best paired Δ is −0.0001. Per benchmark, more data shuffles results (biggen −0.017, worldcentralbanks +0.015, n ≤ 9 pairs) without a net effect. The cap stays at 100K, and the published split is unchanged.
 - The full mmdocrag subject set adds nothing: the 21 kept subjects already cover the history prior for these eval models.
 - Larger caps cost memory and fit time (+50% training responses at 200K) for nothing, so the 100K cap is not a binding constraint on the champion.
+
+## 2026-10-23: promotion of `irt_item_lr` (stack round 1) — milestone hold-out check
+Candidate: `stack__item_lr`, the best paired Δ on dev among the stack runs (`irt_item_lr`: `rp_frac 0.4, rp_dim 32, kv_frac 0.3, eb_nu 10, lr_wvar_mult 2.0`). It was chosen on dev alone; the hold-out was run once, for this candidate only.
+
+| | dev ALC (3 seeds) | dev Δ vs irt | hold-out ALC (3 seeds) | hold-out Δ vs irt | hold-out ΔB0 / ΔB1 / ΔB31 |
+|---|---|---|---|---|---|
+| irt (previous champion) | 0.1830 | 0 | 0.2102 | 0 | |
+| **irt_item_lr** | **0.1766** | −0.0066 ± 0.0012 (63% of pairs) | **0.2058** | −0.0044 ± 0.0017 (56% of pairs) | +0.0010 / −0.0018 / −0.0061 |
+
+Readings:
+- **The gain holds on the hold-out**, at about 2/3 of the dev size, with the CI excluding 0 and fold-macro Δ −0.0044. It comes from budgets 3–31 (−0.005 to −0.007), as on dev. B0 is flat (+0.001), as designed: the item prior variance is unchanged.
+- Hold-out per benchmark: the largest gains are lambda_fp_course (−0.046, n = 18), mathconstraint, tengu, bigfinancebench and tau2_bench (about −0.01). Small losses are on dtap_bench (+0.008) and software_world_models (+0.008).
+- Runtime (`time_predict.py`, multi_swebench, 20 subjects): a 100× formative workload projects to ~3.4 min vs 2.5 min for irt (0.7% of the 8 h limit).
+- **Bug found and fixed before promotion.** On the published split (fit on train only), val group 5 crashed with `LinAlgError: Singular matrix`. One small, nearly all-zero benchmark (75 items, 155 labels, β ≈ −16) made the content-map online-EM scale run away (w ~ 1e171, t2 → ∞) until the Newton Hessian was 0. Because evidence is global, the hosted ZIP would have returned the 0.5 fallback for *every* prediction at that checkpoint. Fix (`ce70199`): EB scales are bounded to [1/100, 100] × their configured value (`eb_bound`), and a failing or non-finite benchmark fit falls back to the priors for that benchmark only. The fix never binds in normal runs: dev (`R_item_lr_dev_fix`) and hold-out (`R_item_lr_holdout_fix`) reproduce the runs above per pair (max |Δ| 1e-16).
+- **Published split** (`configs/aims/irt_item_lr.yaml`, fit on train only): 0.1780 vs irt 0.1857, −0.0081 ± 0.0013 (65% of pairs), with gains at every budget (ΔB0 −0.004, ΔB31 −0.013).
+- Promoted: `configs/research/champion.yaml`, `champion_holdout.yaml`, `configs/aims/irt_item_lr.yaml`. Dev control run: `runs/stack__item_lr` (equivalently `runs/R_item_lr_dev_fix` in the promote worktree).

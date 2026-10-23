@@ -64,7 +64,7 @@ class RefCaimira(Predictor):
             ri, rs, ry = ri[keep], rs[keep], ry[keep]
         uitems = np.unique(ri)
         table = EmbeddingTable()
-        E = table.lookup([train.items[i] for i in uitems])
+        E = table.lookup([train.items[i] for i in uitems], dtype=np.float16)
         pos = np.searchsorted(uitems, ri)
         S = np.array([self.s_map[ident[s]] for s in rs])
         B = np.array([self.b_map[train.bench_names[train.item_bench[i]]] for i in ri])

@@ -68,10 +68,23 @@ adding hier's VI or the subj regression did not move the total beyond noise (`re
 submitted ours, so we cannot calibrate local against hosted. Hosted benchmarks are anonymous; a pair-local method could
 rank differently there.
 
-## 2. Acquisition-matched controls (pending)
+## 2. Acquisition-matched controls (done)
 
-`ref__lex_unc` (their model under our uncertainty acquisition) and `ref__item_rand` (our item model under their random
-acquisition) separate the model effect from the acquisition effect. Results to be filled in below.
+Paired vs `R_champion_dev` (ALC 0.1830; the champion uses uncertainty acquisition), same 1,032 pair-seeds:
+
+| run | model | acquisition | ALC | Δ pairs ± CI | ΔB1 | ΔB3 | ΔB7 | ΔB15 | ΔB31 |
+|---|---|---|---|---|---|---|---|---|---|
+| ref__lex | lex_cosine | random (as submitted) | 0.1965 | +0.0133 ± 0.0024 | +0.0330 | +0.0163 | +0.0052 | +0.0035 | +0.0075 |
+| ref__lex_unc | lex_cosine | our uncertainty | 0.1949 | +0.0117 ± 0.0022 | +0.0248 | +0.0153 | +0.0063 | +0.0033 | +0.0077 |
+| ref__item_rand | our item (`item.yaml`, B variant) | random | 0.1802 | -0.0034 ± 0.0014 | +0.0013 | -0.0023 | -0.0052 | -0.0073 | -0.0071 |
+| item__A3_mix_eb10 | our item (A3) | uncertainty | 0.1768 | -0.0066 ± 0.0009 | -0.0036 | -0.0058 | -0.0078 | -0.0101 | -0.0109 |
+
+- Giving `lex_cosine` our acquisition helps it by 0.0016 ALC, almost all at B1 (-0.0082), because an uncertainty policy is
+  useless at B0 and picks informative first labels.
+- Our item model with the **same random acquisition** as the submission still beats `lex_cosine` by 0.0163 (0.1802 vs 0.1965).
+  So of the 0.0197 gap between `lex_cosine` and A3, about 0.0163 is the model and about 0.003 is the acquisition policy.
+- Caveat: `ref__item_rand` uses `configs/research/item.yaml` (rp .4 d32, kv .3, eb_nu 10), not A3, so the acquisition
+  effect (about 0.003 for item) is approximate; A3 under random acquisition was not run.
 
 ## 3. CaimiraLite retrains (pending)
 

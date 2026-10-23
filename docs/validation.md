@@ -55,6 +55,12 @@ The hold-out is in neither split.
 Same mechanics as below, but eval benchmarks are chosen for *models seen in ref6* and diversity, with a leakage guard (`benchmark-selection.md`). Eval pairs are restricted to ref6-seen models (`cv.eval_seen_from`). Dev has 30 benchmarks in 5 folds; the hold-out has 12. Earlier `configs/split/` numbers (random-model panel) are not comparable.
 
 ## Locked hold-out set (implemented 2026-10-22: `configs/split/`, `scripts/make_selection.py`)
+> **Retired 2026-10-23 (random-model panel protocol only).** 9 of this hold-out's 12 benchmarks are now in the
+> published split: `helm_bbq`, `afrimedqa` and `editbench` are val (scored and tuned on), and `brace`, `helm_thaiexam`,
+> `pxplore`, `realtimeqa`, `risebench` and `wildvision` are train. `configs/split/holdout_*` therefore no longer measure
+> anything held out. The hold-out of the current protocol, `configs/split_seen/holdout_*` (12 other benchmarks), is
+> in neither split and is clean.
+
 Every number so far is reported on the folds used to choose settings: the radius, beta_var_mult, item_target and the training pool. With ~30 configurations compared, that is optimistically biased. The cure is a **dev / hold-out split of benchmarks**:
 - **dev** (≈ 45 panel benchmarks): grouped 5-fold CV as above. Use it for every comparison and sweep.
 - **hold-out** (≈ 12 panel benchmarks, about 2 per major domain): never used for tuning. It is evaluated only for milestone configs (e.g. before each Codabench submission and for the final report), training on everything except the hold-out. The report quotes this number.

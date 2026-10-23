@@ -29,6 +29,7 @@ import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from paiec.data.dataset import _binarize, parse_scale
+from paiec.paths import MDB_ROOT
 from paiec.features.subject import subject_identity
 
 BINARIZE = {"mode": "threshold", "threshold": 0.5}
@@ -81,7 +82,7 @@ def tier(r):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="/fs/clip-scratch/mgor/measurement-db")
+    ap.add_argument("--root", default=MDB_ROOT)
     ap.add_argument("--workers", type=int, default=8)
     a = ap.parse_args()
     slugs = sorted(p.name for p in Path(a.root).iterdir() if (p / "formatted_tables" / "responses.parquet").exists())

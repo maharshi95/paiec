@@ -24,14 +24,18 @@ core tables total ~14.8 GB, traces ~108 GB (skipped unless --traces).
 are skipped (HF cache semantics), so reruns resume. The pinned revision goes to <root>/REVISION.
 """
 import argparse
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from huggingface_hub import HfApi, hf_hub_download
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from paiec.paths import MDB_ROOT  # noqa: E402
+
 REPO = "aims-foundations/measurement-db"
-DEFAULT_ROOT = "/fs/clip-scratch/mgor/measurement-db"
+DEFAULT_ROOT = MDB_ROOT
 CORE = ("benchmarks", "subjects", "items", "responses")
 SPLIT_REPOS = {"train": "mgor/aims-measurement-db-train", "val": "mgor/aims-measurement-db-val"}
 
@@ -85,7 +89,6 @@ def main():
     sha = HfApi().dataset_info(REPO, revision=a.revision).sha
     if a.config:
         import sys
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
         from paiec.config import load_config
         d = load_config(a.config)["data"]
         a.benchmarks = [b for b in d["benchmarks"] if b not in set(d.get("exclude") or [])]

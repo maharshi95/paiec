@@ -7,11 +7,15 @@ Writes <out>/inventory.csv, used by scripts/download_data.py --select to pick be
     python scripts/mdb_inventory.py --root /fs/clip-scratch/mgor/measurement-db
 """
 import argparse
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
 from huggingface_hub import HfApi, hf_hub_download
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from paiec.paths import MDB_ROOT  # noqa: E402
 
 REPO = "aims-foundations/measurement-db"
 TABLES = ("benchmarks", "subjects", "items", "responses", "traces", "assets")
@@ -41,7 +45,7 @@ def one(api, sha, root, slug):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default="/fs/clip-scratch/mgor/measurement-db")
+    ap.add_argument("--root", default=MDB_ROOT)
     ap.add_argument("--revision", default=None)
     ap.add_argument("--workers", type=int, default=16)
     a = ap.parse_args()

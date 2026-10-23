@@ -24,6 +24,7 @@ import yaml  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from paiec.data.dataset import _binarize, parse_scale  # noqa: E402
+from paiec.paths import MDB_ROOT  # noqa: E402
 from paiec.features.identity import model_identity  # noqa: E402
 
 REF6 = ["matharena", "mmdocrag", "multi_swebench", "real_webagents", "researchcodebench", "swe_rebench"]
@@ -115,7 +116,7 @@ def save(fig, out, name):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--split", default="configs/split_seen")
-    ap.add_argument("--root", default="/fs/clip-scratch/mgor/measurement-db")
+    ap.add_argument("--root", default=MDB_ROOT)
     ap.add_argument("--out", default="reports/split_seen")
     ap.add_argument("--run-prefix", default="seen_")
     a = ap.parse_args()

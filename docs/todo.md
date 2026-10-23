@@ -63,4 +63,52 @@ evaluation labels were a constant readable from `item_features`. It was never in
 
 ## 3. Other deferred findings from the 2026-10-23 review
 
-(Filled in when the bug-fix pass finishes; see `results.md` for what was fixed.)
+Found by four independent code reviews (model core, protocol and submission path, data and caching, other predictors)
+plus an adversarial-evidence fuzz of every predictor. The ones that were fixed are in `results.md` (2026-10-23, "review
+fixes"). These were left open on purpose.
+
+**Changes numbers or labels, so needs a re-score of the history**
+- **Replay pools are seeded by a benchmark's position in the loaded list, not by its name** (`sim/replay.py`: the
+  `_rng("subjects"/"split"/"order", ..., b)` calls). Loading one extra benchmark first reshuffles every later
+  benchmark's subject sample, acquisition/evaluation split and candidate order (measured: 0 of 12 pairs kept the same
+  pool). `compare.py` matches rows on (subject, benchmark, seed) and so can report a "paired" Δ over different pools.
+  `compare.py` now warns when the runs' data/cv settings differ; the root fix is to seed with `ds.bench_names[b]`,
+  which re-draws every pool and breaks pairing with every existing `R_*` control, so do it at the next protocol reset.
+- **Item variance for items without kv tokens** (`irt_item.py` `_var_eps`, `_groups`): the `kv_frac * var_d` share is
+  taken out of the item's own effect but only added back when the item has a non-numeric `item_features` token. Items
+  with empty or numeric-only features therefore get `(1 − kv_frac) · var_d` instead of `var_d`, so B0 differs slightly
+  from IRT (0.5101 vs 0.5099 at the reviewer's example) and the item posterior is a little over-confident. Fix: put the
+  share back when an item has no kv tokens (in both `_adapt_bench` and `_item_post`).
+- **Lower-is-better orientation is applied inconsistently** (`dataset.py` `_binarize`): graded lower-is-better scales are
+  always flipped (`oasst`), binary ones only with `binarize.orient` (default off), so `harmbench`, `jailbreakbench`,
+  `advprompter`, `crow` and `emoji_attack` keep 1 = attack success. Related to §1; what the platform does is unknown.
+- **The fitted-gate model `irt_item_mix` (`configs/research/auto/best.yaml`) is a promotion candidate, not the champion.**
+  Honest dev ALC after the fold-weight lookup fix is about 0.1730 (the recorded 0.1726 was in-sample), against 0.1766
+  for the champion. Its `mix_w` are fitted on the seen-dev folds, so (a) running it on the published val split is
+  in-sample, and (b) promoting it needs a locked hold-out run with weights not fitted on the evaluated benchmarks.
+
+**Latent or informational**
+- **Evidence fingerprint samples at most ~48 entries** (`predictors/base.py` `fingerprint`). A different `labeled` list of
+  the same length that agrees on the sampled entries would reuse a stale cached state. The hosted client's list is
+  append-only, so this does not trigger there; it can in `sim.evidence_scope: pair` ablations or if the list were
+  re-ordered. (`_entry_fp` now covers every visible field.)
+- **Warm-started incremental state differs from a fresh adapt**: typically ≤ 4e-3 on realistic evidence at the default `adapt_iters` 15, up to
+  ~0.2 for degenerate evidence (every label from one subject). The hosted acquisition calls use the incremental state,
+  evaluation rebuilds fresh, so it only perturbs which items get acquired.
+- **`time_predict.py` underestimates the hosted runtime.** It scales per-call time measured at small evidence
+  linearly, but every accepted label triggers a warm refit of the whole benchmark whose cost grows with the labels
+  (one-label extend: 32 ms at 100 labels, 103 ms at 6,200; cold adapt 51 → 197 ms, per mix member). With ~1,000 pairs
+  on one benchmark (31k accepts) the acquisition phase alone is plausibly 1–2 h: under the 8 h limit, but not the
+  margin the script prints.
+- **Identical visible subject dicts** (108 subject–benchmark pairs, e.g. on `theagentcompany`) are merged by
+  `subject_key`, which double-counts a pair's own labels. The hosted inputs cannot tell them apart either, so this is
+  not a replay/hosted mismatch.
+- **Fit-cache key** hashes `fit`, `_fit*`, `FIT_HELPERS` methods, module-level functions of the classes' own modules and
+  `features/` and `data/`. Functions imported from another module (e.g. `simple.sigmoid` in `IRT.rasch`) are not hashed.
+- **`eb_eps_nu` (item-effect variance EM) is unbounded**, unlike the other EB scales. Tested on all-correct and
+  separable tiny benchmarks it stayed within 0.55–2.7× its prior; clip it to `eb_bound` for symmetry if it ever matters.
+- **Dev-only reference model `ref_caimira`**: `b_map` is keyed by raw benchmark names but looked up by anonymised ids
+  (so the per-benchmark biases are never used, which only matters in-sample), and `temperature` does nothing for
+  `kind=lite|irtm`. It cannot be packaged (`build_submission` refuses it).
+- **Hosted Python version is undocumented.** The shipped code now avoids `itertools.pairwise` (3.10+), but nothing
+  else has been checked against an older interpreter.

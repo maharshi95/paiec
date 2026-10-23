@@ -14,10 +14,14 @@ Variants (same panel folds, different training sets):
     python scripts/make_selection.py --report /fs/clip-scratch/mgor/measurement-db/benchmark_report.csv
 """
 import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from paiec.paths import MDB_ROOT  # noqa: E402
 
 REF6 = ["matharena", "mmdocrag", "multi_swebench", "real_webagents", "researchcodebench", "swe_rebench"]
 
@@ -126,7 +130,7 @@ def write_seen_split(report_dir, pool, base, n_folds, out, n_holdout, min_identi
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--report", default="/fs/clip-scratch/mgor/measurement-db/benchmark_report.csv")
+    ap.add_argument("--report", default=f"{MDB_ROOT}/benchmark_report.csv")
     ap.add_argument("--out", default="configs/sel")
     ap.add_argument("--folds", type=int, default=5)
     ap.add_argument("--holdout", type=int, default=12, help="locked hold-out benchmarks (1 per top domain)")

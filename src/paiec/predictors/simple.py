@@ -22,10 +22,11 @@ def subject_history(train) -> dict:
     b = train.resp_b
     for bb in np.unique(b):
         m = b == bb
-        base = logit(train.resp_y[m].mean())
+        # Laplace-smoothed rates: a 50/50 or 0/50 pair would otherwise clip to +-9 logits whatever its size
+        base = logit((train.resp_y[m].sum() + 0.5) / (m.sum() + 1))
         sums, cnt = np.bincount(train.resp_s[m], train.resp_y[m]), np.bincount(train.resp_s[m])
         for s in np.nonzero(cnt)[0]:
-            offs[subject_identity(train.subjects[s])].append(float(logit(sums[s] / cnt[s]) - base))
+            offs[subject_identity(train.subjects[s])].append(float(logit((sums[s] + 0.5) / (cnt[s] + 1)) - base))
     return {k: (float(np.mean(v)), len(v)) for k, v in offs.items()}
 
 

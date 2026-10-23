@@ -17,13 +17,20 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
+from paiec.acquisition import build_policy
 from paiec.config import load_config
 from paiec.data.dataset import load_from_config
 from paiec.predictors import build_predictor
 from paiec.runtime import POLICY_FILE, STATE_FILE, save_predictor
 
+DEV_ONLY = ("ref_caimira",)   # need a 4.4 GB embedding table at predict time, which the ZIP does not contain
+
 
 def build(cfg, out_zip: Path, ds=None) -> Path:
+    if cfg["predictor"]["name"] in DEV_ONLY:
+        raise SystemExit(f"{cfg['predictor']['name']} is a dev-only reference model and cannot be packaged: "
+                         "its predictions need the mpnet embedding table, which is not in the ZIP")
+    build_policy(cfg["acquisition"])   # a typo'd parameter would otherwise only fail when labeling.py is imported hosted
     if ds is None:
         d = cfg["data"]
         ds = load_from_config(d)

@@ -66,13 +66,19 @@ class IRTItem(IRT):
     vi_parts = "bud"        # which posterior variances enter the VI expectation: b(eta offset), u(pair), d(item)
 
     # ---------------- item info (cached, pure) ----------------
+    def _sig(self):
+        """Parameters the cached item info depends on. Mix members may override them, so every cache is keyed by it."""
+        return (self.rp_frac > 0, int(self.rp_dim), int(self.rp_seed), bool(self.kv_numeric),
+                bool(getattr(self, "emb_online", False)))
+
     def _poly(self, Z):
+        key = (Z.shape[-1], int(self.rp2_dim), int(self.rp_seed))
         P = getattr(self, "_cache_P", None)
-        if P is None or P[0].shape != (Z.shape[-1], int(self.rp2_dim)):
+        if P is None or P[0] != key:
             rng = np.random.default_rng(int(self.rp_seed) + 1)
-            P = self._cache_P = (rng.standard_normal((Z.shape[-1], int(self.rp2_dim))),
+            P = self._cache_P = (key, rng.standard_normal((Z.shape[-1], int(self.rp2_dim))),
                                  rng.standard_normal((Z.shape[-1], int(self.rp2_dim))))
-        return (Z @ P[0]) * (Z @ P[1]) / np.sqrt(self.rp2_dim)
+        return (Z @ P[1]) * (Z @ P[2]) / np.sqrt(self.rp2_dim)
 
     def _dense(self, zc):
         return np.concatenate([zc, self._poly(zc)], -1) if self.rp2_frac > 0 else zc
@@ -83,11 +89,12 @@ class IRTItem(IRT):
         return X
 
     def _proj(self, n_in):
+        key = (n_in, int(self.rp_dim), int(self.rp_seed))
         R = getattr(self, "_cache_R", None)
-        if R is None or R.shape != (n_in, int(self.rp_dim)):
+        if R is None or R[0] != key:
             rng = np.random.default_rng(int(self.rp_seed))
-            self._cache_R = rng.standard_normal((n_in, int(self.rp_dim))) / np.sqrt(self.rp_dim)
-        return self._cache_R
+            R = self._cache_R = (key, rng.standard_normal((n_in, int(self.rp_dim))) / np.sqrt(self.rp_dim))
+        return R[1]
 
     def _kv_tokens(self, item):
         out = []
@@ -107,7 +114,7 @@ class IRTItem(IRT):
         """Per item: (prior mean, projection z, kv tokens, content key). Cached by item key."""
         if not hasattr(self, "_cache_info"):
             self._cache_info = {}
-        ci = self._cache_info
+        ci = self._cache_info.setdefault(self._sig(), {})
         keys = [item_key(i) for i in items]
         todo = {}
         for k, i in zip(keys, items):
@@ -313,7 +320,7 @@ class IRTItem(IRT):
                 var_u = float(np.clip((((delta - u) ** 2 + vdel_).sum() + nu_u * var_u0) / (nP + nu_u),
                                       0.05 * var_u0, 20 * var_u0))
             if lr and self.lr_adapt_w:
-                hq = hP - 1 / var_u + 1e-9
+                hq = np.bincount(P, wt, nP) + 1e-9   # likelihood curvature (hP carries the pre-update var_u)
                 zs = delta + np.bincount(P, y - mu, nP) / hq
                 wq = 1.0 / (var_u + 1.0 / hq)
                 Apost = X.T @ (X * wq[:, None]) + Si

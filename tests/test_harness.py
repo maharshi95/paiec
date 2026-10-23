@@ -1,4 +1,5 @@
 import json
+import sys
 import zipfile
 
 import numpy as np
@@ -272,6 +273,82 @@ def test_load_dataset_multi_root_and_exclude(tmp_path):
     cut = load_dataset([a, b], exclude=["bench_c"], **kw)
     assert sorted(cut.bench_names) == ["bench_a", "bench_b"] and len(cut.resp_y) == 24   # not served from the full pickle
     assert load_dataset([a, b], benchmarks=["bench_a", "bench_c"], exclude=["bench_c"], **kw).bench_names == ["bench_a"]
+
+
+def test_irt_item_eb_u_nu_keeps_curvature_positive(monkeypatch):
+    """With the pair-variance EM on, the subject-regression weights must use the likelihood curvature. Taking it from
+    hP (built with the pre-update var_u) left hq <= 0 whenever var_u shrank, so some EM iterations solved an
+    indefinite system (the iteration recovers, which is why the final posterior looks fine)."""
+    ds = make_synthetic(n_subjects=40, n_benchmarks=4, n_items=200, trials=1, seed=3)
+    cfg = {"name": "irt_item_lr", "item_target": "absolute", "beta_var_mult": 4.0, "rp_frac": 0.3, "rp_dim": 64,
+           "kv_frac": 0.2, "dup_frac": 0.2, "eb_nu": 10, "lr_wvar_mult": 2.0, "eb_u_nu": 10}
+    pred = build_predictor(cfg).fit(ds.restrict(["bench0", "bench1"]))
+    seen, solve = [], np.linalg.solve
+
+    def spy(a, b):
+        f = sys._getframe(1)
+        if f.f_code.co_name == "_adapt_bench" and f.f_locals.get("lr") and a.ndim == 2 and len(a) == len(b):
+            seen.append(float(np.linalg.eigvalsh((a + a.T) / 2).min()))
+        return solve(a, b)
+
+    monkeypatch.setattr(np.linalg, "solve", spy)
+    rng = np.random.default_rng(0)
+    for t in range(80):
+        idx = np.nonzero(ds.resp_b == 2 + t % 2)[0]
+        subj = ds.resp_s[idx]
+        heavy = rng.choice(40, rng.integers(5, 35), replace=False)
+        keep = []
+        for s in range(40):   # a mix of 31-label pairs and pairs with 1-2 labels
+            keep += list(rng.choice(idx[subj == s], 31 if s in heavy else rng.integers(1, 3), replace=False))
+        ev = [[[ds.subjects[ds.resp_s[k]], ds.items[ds.resp_i[k]]], int(ds.resp_y[k])] for k in keep]
+        pred.reset_runtime()
+        pred.adapt(ev)
+    assert seen and min(seen) > 0, min(seen)
+
+
+def test_mix_fold_weights_apply_to_anonymised_benchmarks(ds):
+    """mix_fold_w is keyed by benchmark name, but items carry anonymised ids: the override must still be used."""
+    from paiec.data.dataset import anon_benchmark_id
+    pred = build_predictor({**ITEM_CFG, "name": "irt_item_mix", "mix_members": [{"lr_on": False}, {"lr_on": True}]})
+    name = ds.bench_names[2]
+    pred.mix_fold_w = {name: [[1.0] * 6, [0.5] * 6]}
+    pred.mix_fold_c = {name: [0.25] * 6}
+    W, c = pred._weights(anon_benchmark_id(name))
+    assert W[1, 0] == 0.5 and c[0] == 0.25
+    W0, c0 = pred._weights(anon_benchmark_id("some_other_benchmark"))
+    assert W0[1, 0] == 0.0 and c0[0] == 0.0
+
+
+def test_mix_members_do_not_share_item_caches(ds):
+    """A member that overrides the content-map settings must not leave its cached item features to the next member."""
+    base = {**ITEM_CFG, "name": "irt_item_mix", "rp_frac": 0.3}
+    train = ds.restrict(["bench0", "bench1"])
+    ev = _evidence(ds, 120)
+    inputs = [(ds.subjects[s], ds.items[i]) for s, i in zip(ds.resp_s[::97], ds.resp_i[::97])]
+    both = build_predictor({**base, "mix_members": [{"rp_frac": 0.0}, {}]}).fit(train)
+    both.mix_w = ((0.0,) * 6, (1.0,) * 6)   # only the second (default) member counts, but it is scored after the first
+    solo = build_predictor({**base, "mix_members": [{}]}).fit(train)
+    solo.mix_w = ((1.0,) * 6,)
+    assert np.allclose(both.predict_batch(inputs, ev), solo.predict_batch(inputs, ev), atol=1e-9)
+
+
+def test_subject_history_is_smoothed(ds):
+    """A perfect pair's offset must grow with the evidence behind it: unsmoothed, every 100%/0% pair clipped to the same
+    +-9 logits whether it had 10 responses or 200."""
+    from paiec.features.subject import subject_identity
+    from paiec.predictors.simple import subject_history
+    train = ds.restrict(["bench0"])
+    big, small = [s for s in np.unique(train.resp_s) if (train.resp_s == s).sum() >= 60][:2]
+    keep = np.ones(len(train.resp_s), bool)
+    rows_small = np.nonzero(train.resp_s == small)[0]
+    keep[rows_small[10:]] = False   # the small subject keeps 10 responses
+    y = train.resp_y.copy()
+    y[train.resp_s == big] = 1.0
+    y[rows_small[:10]] = 1.0
+    t = type(train)(**{**train.__dict__, "resp_s": train.resp_s[keep], "resp_i": train.resp_i[keep], "resp_y": y[keep]})
+    hist = subject_history(t)
+    off_big, off_small = (hist[subject_identity(train.subjects[s])][0] for s in (big, small))
+    assert off_big - off_small > 1.5, (off_big, off_small)
 
 
 def test_fit_as_shares_parent_fit_cache(ds, tmp_path, monkeypatch):

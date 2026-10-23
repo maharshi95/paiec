@@ -89,9 +89,12 @@ def _binarize(name, values, cfg, scale=None):
     vals = np.asarray(values, float)
     finite = np.isfinite(vals)
     flip = bool(cfg.get("orient")) and scale.get("direction") == "lower_is_better"
+    override = (cfg.get("per_benchmark") or {}).get(name)
+    if override == "exclude":
+        return vals, np.zeros(len(vals), bool), "excluded"
     if set(np.unique(vals[finite])) <= {0.0, 1.0}:
         return (1 - vals if flip else vals), finite, "binary"
-    rule = (cfg.get("per_benchmark") or {}).get(name, cfg.get("mode", "exclude"))
+    rule = override if override is not None else cfg.get("mode", "exclude")
     none = (vals, np.zeros(len(vals), bool), "excluded")
     if rule == "exclude" or scale.get("direction") == "unordered" or not finite.any():
         return none
@@ -122,6 +125,18 @@ def find_benchmarks(root) -> dict:
             if (p / "formatted_tables").is_dir():
                 found.setdefault(p.name, p / "formatted_tables")
     return found
+
+
+def data_fingerprint(root, slugs) -> dict:
+    """What the pickle cache must not confuse: where the tables came from, how big they are, and the loader code.
+    Same revision + same config can still mean different data (a capped export vs the full db, a re-exported split)."""
+    roots = [root] if isinstance(root, (str, Path)) else list(root)
+    tables = find_benchmarks(roots)
+    sizes = {s: [(tables[s] / f"{t}.parquet").stat().st_size for t in TABLES if (tables[s] / f"{t}.parquet").exists()]
+             for s in slugs if s in tables}
+    code = hashlib.sha1(b"".join((Path(__file__).parent.parent / p).read_bytes()
+                                 for p in ("data/dataset.py", "features/subject.py", "features/identity.py"))).hexdigest()
+    return {"roots": [str(Path(r).resolve()) for r in roots], "sizes": sizes, "code": code[:12]}
 
 
 def read_revision(root) -> str:
@@ -190,7 +205,8 @@ def load_dataset(root="data/raw", benchmarks=None, binarize=None, cache_dir="dat
         slugs = [s for s in slugs if s in benchmarks]
     if exclude:
         slugs = [s for s in slugs if s not in set(exclude)]
-    key_parts = ["v3", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from]
+    key_parts = ["v4", revision, slugs, binarize, max_responses, max_item_chars, prefer_seen_from,
+                 data_fingerprint(root, slugs)]
     if cap_overrides:   # appended only when set, so existing caches keep their keys
         key_parts.append(cap_overrides)
     if exclude:

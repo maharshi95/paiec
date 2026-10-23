@@ -16,6 +16,7 @@ from contextlib import contextmanager
 
 import numpy as np
 
+from ..data.dataset import anon_benchmark_id
 from .base import Evidence
 from .irt_item import IRTItem, IRTItemLR
 from .simple import sigmoid
@@ -79,9 +80,16 @@ class IRTItemMix(IRTItemLR):
                 state["m"][k] = IRTItem.extend(self, st, new)
         return state
 
+    def _by_anon(self, table):
+        """{benchmark name: v} -> {anonymised benchmark_id: v}: items only carry the anonymised id."""
+        cache = self.__dict__.setdefault("_cache_fold", {})
+        if id(table) not in cache:
+            cache[id(table)] = {anon_benchmark_id(k): v for k, v in (table or {}).items()}
+        return cache[id(table)]
+
     def _weights(self, bench):
-        W = (self.mix_fold_w or {}).get(bench, self.mix_w)
-        c = (self.mix_fold_c or {}).get(bench, self.mix_c)
+        W = self._by_anon(self.mix_fold_w).get(bench, self.mix_w)
+        c = self._by_anon(self.mix_fold_c).get(bench, self.mix_c)
         return np.asarray(W, float), np.asarray(c, float)
 
     def score_batch(self, state, inputs):

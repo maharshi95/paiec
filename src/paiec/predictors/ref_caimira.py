@@ -17,6 +17,18 @@ from .base import Predictor
 from .simple import sigmoid
 
 
+def _pick_device(torch):
+    """cuda only if it can actually run a kernel: is_available() is True on GPUs the installed torch build has no
+    kernels for (e.g. a Pascal card with an sm_70+ wheel), which then fails on the first op."""
+    if torch.cuda.is_available():
+        try:
+            (torch.ones(2, device="cuda") * 2).sum().item()
+            return "cuda"
+        except Exception:  # noqa: BLE001 - any CUDA failure means fall back to cpu
+            return "cpu"
+    return "cpu"
+
+
 def _softmax(x):
     e = np.exp(x - x.max(-1, keepdims=True))
     return e / e.sum(-1, keepdims=True)
@@ -44,13 +56,14 @@ class RefCaimira(Predictor):
             self.members = []
             for kind, ld in (("lite", self.latent_dim), ("irtm", self.irtm_latent)):
                 m = RefCaimira(kind=kind, latent_dim=ld, irtm_latent=ld, epochs=self.epochs, lr=self.lr,
-                               batch=self.batch, seed=self.seed, max_rows=self.max_rows).fit(train)
+                               batch=self.batch, seed=self.seed, max_rows=self.max_rows, val_frac=self.val_frac,
+                               patience=self.patience, unk=self.unk).fit(train)
                 self.members.append(m)
             return self
         import torch
         rng = np.random.default_rng(self.seed)
         torch.manual_seed(self.seed)
-        dev = "cuda" if torch.cuda.is_available() else "cpu"
+        dev = _pick_device(torch)
         ident = [subject_identity(s) for s in train.subjects]
         s_names = sorted({ident[s] for s in np.unique(train.resp_s)})
         self.s_map = {n: k for k, n in enumerate(s_names)}
@@ -100,7 +113,7 @@ class RefCaimira(Predictor):
                         mod(Ts[j], Tb[j], Tc[j], Et[Tp[j]].float()), Ty[j], reduction="sum").item()
                 vl /= max(len(va_idx), 1)
             print(f"    ref_caimira[{self.kind}] epoch {ep + 1} val_nll {vl:.4f}", flush=True)
-            if vl < best - 1e-4:
+            if len(va_idx) == 0 or vl < best - 1e-4:   # no validation rows: no early stopping, keep the last epoch
                 best, bad = vl, 0
                 best_state = {k: v.detach().cpu().clone() for k, v in mod.state_dict().items()}
             else:

@@ -16,7 +16,7 @@ adapt: inside IRT's per-benchmark Newton loop, each pair's theta gets a K x K Ne
 """
 import numpy as np
 
-from ..features.subject import subject_identity
+from ..features.subject import subject_identity, subject_key
 from .base import item_key
 from .irt import IRT, ridge
 from .simple import sigmoid
@@ -117,7 +117,7 @@ class MIRT(IRT):
     def theta_prior(self, subject):
         if not hasattr(self, "_cache_th"):
             self._cache_th = {}
-        k = self.group_key(subject)
+        k = subject_key(subject)   # not group_key: under sharing it is the identity, but the prior uses per-subject fields
         if k not in self._cache_th:
             base = self.sfeat.transform_one(subject) @ self.W_th + self.b_th
             tab, c = self.theta_table.get(subject_identity(subject), (None, 0))

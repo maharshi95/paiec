@@ -6,7 +6,6 @@ kv      hashed `key` and `key=value` tokens from item_features
 inter   hashed tokens from interactors
 """
 from collections import Counter
-from itertools import pairwise
 
 import numpy as np
 
@@ -14,6 +13,10 @@ from .hashing import hash_tokens, l2_normalize, parse_kv, tokenize
 
 ALL_FIELDS = ("text", "length", "kv", "inter")
 N_DENSE = 4
+# Training items are truncated to data.max_item_chars (8000 in every shipped config) to save memory, while the hosted
+# worker passes the full text. The length statistics are therefore computed on the first ITEM_CHAR_CAP characters, so
+# a 100K-character item gets the same feature at fit time and at test time.
+ITEM_CHAR_CAP = 8000
 
 
 class ItemFeaturizer:
@@ -29,10 +32,11 @@ class ItemFeaturizer:
     def transform_one(self, item: dict) -> np.ndarray:
         x = np.zeros(self.n_features, np.float32)
         h = x[: self.dim]
-        content = item.get("item_content", "")
+        content = item.get("item_content", "")[:ITEM_CHAR_CAP]
         if "text" in self.fields:
             toks = tokenize(content, self.max_chars)
-            grams = toks + ([a + "_" + b for a, b in pairwise(toks)] if self.bigrams else [])
+            # zip(toks, toks[1:]) rather than itertools.pairwise: the hosted Python version is not documented (< 3.10?)
+            grams = toks + ([a + "_" + b for a, b in zip(toks, toks[1:])] if self.bigrams else [])  # noqa: RUF007
             t = np.zeros(self.dim, np.float32)
             for g, c in Counter(grams).items():
                 hash_tokens(t, [g], "w:", float(np.log1p(c)))

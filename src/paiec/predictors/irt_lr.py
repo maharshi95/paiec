@@ -29,6 +29,7 @@ LR_FEATS = ("u", "hz", "think", "size", "size_na", "date", "date_na", "effort", 
 
 class IRTLR(IRT):
     name = "irt_lr"
+    FIT_HELPERS = ("_stack",)   # builds the training design matrix behind lr_xbar / lr_wbar / lr_S
     RUNTIME_PARAMS = IRT.RUNTIME_PARAMS + ("lr_wvar_mult", "lr_rvar_mult", "lr_adapt_w")
     FIT_VERSION = 2
     lr_feats = LR_FEATS

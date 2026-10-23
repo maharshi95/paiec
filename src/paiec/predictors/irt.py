@@ -43,6 +43,7 @@ def rasch(P, J, ysum, n, nP, nJ, var, iters):
 class IRT(Predictor):
     name = "irt"
     # test-time-only params: excluded from the fit-cache key and re-applied after loading (fitcache.py)
+    FIT_HELPERS = ("_fold_of",)   # called by fit; hashed into the fit-cache key (fitcache.py)
     RUNTIME_PARAMS = ("var_scale", "marginalize", "learn_bench", "learn_items", "adapt_iters", "clip", "subject_sharing")
     item_fields = ("text", "length", "kv")
     item_dim = 1024

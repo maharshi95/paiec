@@ -29,10 +29,10 @@ def item_key(item: dict) -> tuple:
 
 def _entry_fp(entry) -> int:
     (s, i), y = entry
-    return hash((y, i.get("benchmark_id", ""), i.get("item_content", "")[:256], i.get("item_features", ""),
-                 s.get("normalized_name", ""), s.get("subject_features_extra", ""), s.get("provider", ""),
-                 s.get("harness", ""), s.get("harness_version", ""), s.get("reasoning_effort", ""),
-                 s.get("release_date", "")))
+    return hash((y, i.get("benchmark_id", ""), i.get("item_content", ""), i.get("item_features", ""),
+                 i.get("interactors", ""), s.get("normalized_name", ""), s.get("subject_features_extra", ""),
+                 s.get("provider", ""), s.get("harness", ""), s.get("harness_version", ""),
+                 s.get("reasoning_effort", ""), s.get("release_date", ""), s.get("access_date", "")))
 
 
 def fingerprint(labeled, n=None) -> tuple:

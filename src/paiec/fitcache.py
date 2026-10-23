@@ -4,7 +4,8 @@ test-time behaviour skip the offline fit (~5 min per fold on the 208-benchmark u
 Key = sha1 of
   - the predictor class name and every public, non-callable class/instance attribute (params),
     except those the class lists in RUNTIME_PARAMS (test-time only; re-applied after loading);
-  - the source of every `fit` / `_fit*` method in the class MRO, every module-level function in
+  - the source of every `fit` / `_fit*` method in the class MRO (plus the methods a class lists in FIT_HELPERS: fit-time
+    helpers whose names do not start with `_fit`, e.g. IRT._fold_of), every module-level function in
     the modules defining those classes, and the whole of features/ and data/ (fit-time code);
   - the training benchmark list, the data config and the dataset revision.
 Runtime methods (adapt, extend, score, _bench_step, ...) are *not* hashed: edits to them reuse the
@@ -42,7 +43,7 @@ def _params(pred):
     if base is not None:   # runtime-only subclass: key as the parent class
         out["name"] = base.name
     return {k: (list(v) if isinstance(v, tuple) else v) for k, v in sorted(out.items())
-            if k not in runtime and k != "RUNTIME_PARAMS"}
+            if k not in runtime and k not in ("RUNTIME_PARAMS", "FIT_HELPERS")}
 
 
 def _fit_source(pred):
@@ -52,7 +53,7 @@ def _fit_source(pred):
             continue
         mods.add(cls.__module__)
         for k, v in vars(cls).items():
-            if (k == "fit" or k.startswith("_fit")) and callable(v):
+            if (k == "fit" or k.startswith("_fit") or k in vars(cls).get("FIT_HELPERS", ())) and callable(v):
                 parts.append(inspect.getsource(v))
     for m in sorted(mods):
         mod = sys.modules[m]
